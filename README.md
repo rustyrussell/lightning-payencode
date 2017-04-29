@@ -26,7 +26,7 @@ Currently defined tagged parts are:
 1. h: description of purpose of payment (SHA256).  This is used to commit
    to an associated description which is too long to fit, such as may
    be contained in a web page.
-1. f: fallback onchain-address.  20 bytes == p2pkh.  21 bytes == p2wpkh.
+1. f: fallback onchain-address.  20 bytes == p2pkh.  21 bytes == p2wpkh, 33 bytes == p2wsh.
 1. r: extra routing information.  This should be appended to the route
       to allow routing to non-public nodes; there may be more
 	  than one of these.
