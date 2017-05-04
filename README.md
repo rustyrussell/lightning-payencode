@@ -12,9 +12,8 @@ Human readable part:
 And data part:
 1. Version: 0 (5 bits)
 1. Payment hash (256 bits)
-1. Dest channel id (high bit == which end) (64 bits)
 1. Zero or more tagged parts.
-1. Signature (bitcoin-style, of SHA256(SHA256()) of above. (256 bits)
+1. Signature (bitcoin-style, of SHA256(SHA256(), plus recovery byte) of above. (520 bits)
 
 Tagged parts are of format:
 1. type (5 bits)

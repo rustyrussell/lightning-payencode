@@ -169,8 +169,8 @@ def lnencode(options):
     
     hrp = 'ln' + options.currency + amount
     
-    # version + paymenthash + channelid
-    data = [0] + convertbits(bytearray.fromhex(options.paymenthash) + bytearray.fromhex(options.channelid), 8, 5)
+    # version + paymenthash
+    data = [0] + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
     
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
@@ -189,9 +189,10 @@ def lnencode(options):
 
     # We actually sign the hrp, then the array of 5-bit values as bytes.
     privkey = secp256k1.PrivateKey(bytes(bytearray.fromhex(options.privkey)))
-    sig = privkey.ecdsa_serialize_compact(privkey.ecdsa_sign(
-        bytearray([ord(c) for c in hrp] + data)))
-    data = data + convertbits(sig, 8, 5)
+    sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + data))
+    # This doesn't actually serialize, but returns a pair of values :(
+    sig,recid = privkey.ecdsa_recoverable_serialize(sig)
+    data = data + convertbits(bytes(sig) + bytes([recid]), 8, 5)
 
     print(bech32_encode(hrp, data))
 
@@ -205,27 +206,19 @@ def lndecode(options):
 
     if data[0] != 0:
         sys.exit("Unknown version {}".format(data[0]))
-
-    # Final signature takes 103 bytes (64 bytes base32 encoded)
-    if len(data) < 103:
-        sys.exit("Too short to contain signature")
-    sigdecoded = convertbits(data[-103:], 5, 8, False)
-    data = data[:-103]
-
-    if options.pubkey:
-        pubkey = secp256k1.PublicKey()
-        pubkey.deserialize(bytes(bytearray.fromhex(options.pubkey)))
-        sig = pubkey.ecdsa_deserialize_compact(sigdecoded)
-        if not pubkey.ecdsa_verify(bytearray([ord(c) for c in hrp] + data), sig):
-            sys.exit("Bad signature")
-        print("Signature: OK")
-    else:
-        print("Signature: Unknown")
-
-    # Preserve original data for signature check.
-    origdata = data
     data = data[1:]
 
+    # Final signature takes 104 bytes (65 bytes base32 encoded)
+    if len(data) < 103:
+        sys.exit("Too short to contain signature")
+    sigdecoded = convertbits(data[-104:], 5, 8, False)
+    data = data[:-104]
+
+    pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+    sig = pubkey.ecdsa_recoverable_deserialize(sigdecoded[0:64], sigdecoded[64])
+    pubkey.public_key = pubkey.ecdsa_recover(bytearray([ord(c) for c in hrp] + data), sig)
+    print("Signed with public key: {}".format(bytearray(pubkey.serialize()).hex()))
+    
     m = re.search("\d+", hrp)
     if not m:
         sys.exit("Does not contain amount")
@@ -246,15 +239,14 @@ def lndecode(options):
     if options.rate:
         print("(Conversion: {})".format(amount / 10**11 * float(options.rate)))
 
-    # (32 + 8) bytes turns into 64 bytes when base32 encoded.
-    if len(data) < 64:
-        sys.exit("Not long enough ton contain payment hash and channel id")
+    # 32 bytes turns into 52 bytes when base32 encoded.
+    if len(data) < 52:
+        sys.exit("Not long enough to contain payment hash")
 
-    decoded = convertbits(data[:64], 5, 8, False)
-    data = data[64:]
-    assert len(decoded) == 32 + 8
-    print("Payment hash: {}".format(bytearray(decoded[0:32]).hex()))
-    print("Channel id: {}".format(bytearray(decoded[32:40]).hex()))
+    decoded = convertbits(data[:52], 5, 8, False)
+    data = data[52:]
+    assert len(decoded) == 32
+    print("Payment hash: {}".format(bytearray(decoded).hex()))
 
     while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
@@ -296,7 +288,6 @@ parser_enc.add_argument('--description-hashed',
                         help='What is being purchased (for hashing)')
 parser_enc.add_argument('amount', type=int, help='Amount in millisatoshi')
 parser_enc.add_argument('paymenthash', help='Payment hash (in hex)')
-parser_enc.add_argument('channelid', help='Channel id (in hex)')
 parser_enc.add_argument('privkey', help='Private key (in hex)')
 parser_enc.set_defaults(func=lnencode)
 
