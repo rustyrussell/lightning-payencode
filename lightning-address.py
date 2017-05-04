@@ -3,6 +3,8 @@ import argparse
 import hashlib
 import re
 import sys
+# Try 'pip3 install secp256k1'
+import secp256k1
 
 # All the hard parts stolen from https://github.com/sipa/bech32/blob/master/ref/python/segwit_addr.py:
 
@@ -174,9 +176,9 @@ def lnencode(options):
         pubkey,channel,fee,cltv = r.split('/')
         route = bytearray.fromhex(pubkey) + bytearray.fromhex(channel) + u32list(int(fee)) + u32list(int(cltv))
         data = data + tagged('r', route)
-        
+
     if options.fallback:
-        # FIXME: Take a real address here, and check and strip the checksum & currentcy.
+        # FIXME: Take a real address here, and check and strip the checksum & currency.
         data = data + tagged('f', [ord(c) for c in options.fallback])
     
     if options.description:
@@ -185,8 +187,11 @@ def lnencode(options):
     if options.description_hashed:
         data = data + tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
 
-    # FIXME: We need privkey to generate signature.
-    data = data + convertbits([0] * 64, 8, 5)
+    # We actually sign the hrp, then the array of 5-bit values as bytes.
+    privkey = secp256k1.PrivateKey(bytes(bytearray.fromhex(options.privkey)))
+    sig = privkey.ecdsa_serialize_compact(privkey.ecdsa_sign(
+        bytearray([ord(c) for c in hrp] + data)))
+    data = data + convertbits(sig, 8, 5)
 
     print(bech32_encode(hrp, data))
 
@@ -200,6 +205,25 @@ def lndecode(options):
 
     if data[0] != 0:
         sys.exit("Unknown version {}".format(data[0]))
+
+    # Final signature takes 103 bytes (64 bytes base32 encoded)
+    if len(data) < 103:
+        sys.exit("Too short to contain signature")
+    sigdecoded = convertbits(data[-103:], 5, 8, False)
+    data = data[:-103]
+
+    if options.pubkey:
+        pubkey = secp256k1.PublicKey()
+        pubkey.deserialize(bytes(bytearray.fromhex(options.pubkey)))
+        sig = pubkey.ecdsa_deserialize_compact(sigdecoded)
+        if not pubkey.ecdsa_verify(bytearray([ord(c) for c in hrp] + data), sig):
+            sys.exit("Bad signature")
+        print("Signature: OK")
+    else:
+        print("Signature: Unknown")
+
+    # Preserve original data for signature check.
+    origdata = data
     data = data[1:]
 
     m = re.search("\d+", hrp)
@@ -232,8 +256,7 @@ def lndecode(options):
     print("Payment hash: {}".format(bytearray(decoded[0:32]).hex()))
     print("Channel id: {}".format(bytearray(decoded[32:40]).hex()))
 
-    # Final signature takes 103 bytes (64 bytes base32 encoded)
-    while len(data) > 103:
+    while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
         if tag == 'r':
             if len(tagdata) != 33 + 8 + 4 + 4:
@@ -253,10 +276,6 @@ def lndecode(options):
         else:
             print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
 
-    # FIXME: check signature!
-    sigdecoded = convertbits(data, 5, 8, False)
-    if sigdecoded != [0] * 64:
-        sys.exit("Bad signature");
 
 parser = argparse.ArgumentParser(description='Encode lightning address')
 subparsers = parser.add_subparsers(dest='subparser_name',
@@ -278,10 +297,12 @@ parser_enc.add_argument('--description-hashed',
 parser_enc.add_argument('amount', type=int, help='Amount in millisatoshi')
 parser_enc.add_argument('paymenthash', help='Payment hash (in hex)')
 parser_enc.add_argument('channelid', help='Channel id (in hex)')
+parser_enc.add_argument('privkey', help='Private key (in hex)')
 parser_enc.set_defaults(func=lnencode)
 
 parser_dec.add_argument('lnaddress', help='Address to decode')
-parser_dec.add_argument('--rate', type=float, help='Conversion amount for 1 currency unit')
+parser_dec.add_argument('--rate', type=float, help='Convfersion amount for 1 currency unit')
+parser_dec.add_argument('--pubkey', help='Public key for the chanid')
 parser_dec.set_defaults(func=lndecode)
 
 options = parser.parse_args()
