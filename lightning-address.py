@@ -1,6 +1,5 @@
 #! /usr/bin/python3
 import argparse
-import binascii
 import hashlib
 import re
 import sys
@@ -135,7 +134,7 @@ def encode(hrp, witver, witprog):
 # Represent as a big-endian 32-bit number.
 def u32list(val):
     assert val < (1 << 32)
-    return [(val >> 24) & 0xff, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff]
+    return bytearray([(val >> 24) & 0xff, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
 def from_u32list(l):
     return (l[0] << 24) + (l[1] << 16) + (l[2] << 8) + l[3]
@@ -169,11 +168,11 @@ def lnencode(options):
     hrp = 'ln' + options.currency + amount
     
     # version + paymenthash + channelid
-    data = [0] + convertbits(list(binascii.unhexlify(options.paymenthash)) + list(binascii.unhexlify(options.channelid)), 8, 5)
+    data = [0] + convertbits(bytearray.fromhex(options.paymenthash) + bytearray.fromhex(options.channelid), 8, 5)
     
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
-        route = list(binascii.unhexlify(pubkey)) + list(binascii.unhexlify(channel)) + u32list(int(fee)) + u32list(int(cltv))
+        route = bytearray.fromhex(pubkey) + bytearray.fromhex(channel) + u32list(int(fee)) + u32list(int(cltv))
         data = data + tagged('r', route)
         
     if options.fallback:
@@ -230,8 +229,8 @@ def lndecode(options):
     decoded = convertbits(data[:64], 5, 8, False)
     data = data[64:]
     assert len(decoded) == 32 + 8
-    print("Payment hash: {}".format(binascii.hexlify(bytearray(decoded[0:32]))))
-    print("Channel id: {}".format(binascii.hexlify(bytearray(decoded[32:40]))))
+    print("Payment hash: {}".format(bytearray(decoded[0:32]).hex()))
+    print("Channel id: {}".format(bytearray(decoded[32:40]).hex()))
 
     # Final signature takes 103 bytes (64 bytes base32 encoded)
     while len(data) > 103:
@@ -240,22 +239,19 @@ def lndecode(options):
             if len(tagdata) != 33 + 8 + 4 + 4:
                 sys.exit('Unexpected r tag length {}'.format(len(tagdata)))
             print("Route: {}/{}/{}/{}"
-                  .format(binascii.hexlify(bytearray(tagdata[0:33])),
-                          binascii.hexlify(bytearray(tagdata[33:41])),
+                  .format(bytearray(tagdata[0:33]).hex(),
+                          bytearray(tagdata[33:41]).hex(),
                           from_u32list(tagdata[41:45]),
                           from_u32list(tagdata[45:49])))
         elif tag == 'f':
             # FIXME: Format address!
-            print("Fallback: {}"
-                  .format(binascii.hexlify(bytearray(tagdata))))
+            print("Fallback: {}".format(bytearray(tagdata).hex()))
         elif tag == 'd':
             print("Description: {}".format(''.join(chr(c) for c in tagdata)))
         elif tag == 'h':
-            print("Description hash: {}"
-                  .format(binascii.hexlify(bytearray(tagdata))))
+            print("Description hash: {}".format(bytearray(tagdata).hex()))
         else:
-            print("UNKNOWN TAG {}: {}"
-                  .format(tag, binascii.hexlify(bytearray(tagdata))))
+            print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
 
     # FIXME: check signature!
     sigdecoded = convertbits(data, 5, 8, False)
