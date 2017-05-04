@@ -11,6 +11,7 @@ Human readable part:
 
 And data part:
 1. Version: 0 (5 bits)
+1. UTC timestamp in seconds-since-Unix-epoch (32 bits)
 1. Payment hash (256 bits)
 1. Zero or more tagged parts.
 1. Signature (bitcoin-style, of SHA256(SHA256(), plus recovery byte) of above. (520 bits)
@@ -25,6 +26,7 @@ Currently defined tagged parts are:
 1. h: description of purpose of payment (SHA256).  This is used to commit
    to an associated description which is too long to fit, such as may
    be contained in a web page.
+1. x: expiry time in seconds. Default is 3600 (1 hour) if not specified.
 1. f: fallback onchain-address.  20 bytes == p2pkh.  21 bytes == p2wpkh, 33 bytes == p2wsh.
 1. r: extra routing information.  This should be appended to the route
       to allow routing to non-public nodes; there may be more

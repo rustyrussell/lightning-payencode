@@ -11,8 +11,8 @@ echo "# Please send 10 satoshi using rhash $RHASH to me @$PUBKEY"
 ./lightning-address.py encode 10000 $RHASH $PRIVKEY
 echo
 
-echo "# Please send \$3 for a cup of coffee to the same peer"
-./lightning-address.py encode --description='1 cup coffee' $((3 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo "# Please send \$3 for a cup of coffee to the same peer, within 1 minute"
+./lightning-address.py encode --description='1 cup coffee' $((3 * 100000000000 / $CONVERSION_RATE)) --expires=60 $RHASH $PRIVKEY
 echo
 
 echo "# Now send \$24 for an entire list of things (hashed)"

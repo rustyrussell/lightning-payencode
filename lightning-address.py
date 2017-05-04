@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import re
 import sys
+import time
 # Try 'pip3 install secp256k1'
 import secp256k1
 
@@ -138,8 +139,23 @@ def u32list(val):
     assert val < (1 << 32)
     return bytearray([(val >> 24) & 0xff, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
+# Represent big-endian number with as many bytes as it takes.
+def varlist(val):
+    b = bytearray()
+    while val != 0:
+        b.append(val & 0xFF)
+        val = val // 256
+    b.reverse()
+    return b
+
 def from_u32list(l):
     return (l[0] << 24) + (l[1] << 16) + (l[2] << 8) + l[3]
+
+def from_varlist(l):
+    total = 0
+    for v in l:
+        total = total * 256 + v
+    return total
 
 def tagged(char, l):
     bits=convertbits(l, 8, 5)
@@ -169,9 +185,12 @@ def lnencode(options):
     
     hrp = 'ln' + options.currency + amount
     
-    # version + paymenthash
-    data = [0] + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
+    # version + timestamp + paymenthash
+    now = int(time.time())
+    assert len(u32list(now) + bytearray.fromhex(options.paymenthash)) == 4 + 32
+    data = [0] + convertbits(u32list(now) + bytearray.fromhex(options.paymenthash), 8, 5)
     
+
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
         route = bytearray.fromhex(pubkey) + bytearray.fromhex(channel) + u32list(int(fee)) + u32list(int(cltv))
@@ -183,7 +202,10 @@ def lnencode(options):
     
     if options.description:
         data = data + tagged('d', [ord(c) for c in options.description])
-    
+
+    if options.expires:
+        data = data + tagged('x', varlist(options.expires))
+        
     if options.description_hashed:
         data = data + tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
 
@@ -239,14 +261,16 @@ def lndecode(options):
     if options.rate:
         print("(Conversion: {})".format(amount / 10**11 * float(options.rate)))
 
-    # 32 bytes turns into 52 bytes when base32 encoded.
-    if len(data) < 52:
-        sys.exit("Not long enough to contain payment hash")
+    # 4 + 32 bytes turns into 58 bytes when base32 encoded.
+    if len(data) < 58:
+        sys.exit("Not long enough to contain timestamp and payment hash")
 
-    decoded = convertbits(data[:52], 5, 8, False)
-    data = data[52:]
-    assert len(decoded) == 32
-    print("Payment hash: {}".format(bytearray(decoded).hex()))
+    decoded = convertbits(data[:58], 5, 8, False)
+    data = data[58:]
+    assert len(decoded) == 4 + 32
+    tstamp = from_u32list(decoded[0:4])
+    print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
+    print("Payment hash: {}".format(bytearray(decoded[4:]).hex()))
 
     while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
@@ -265,6 +289,8 @@ def lndecode(options):
             print("Description: {}".format(''.join(chr(c) for c in tagdata)))
         elif tag == 'h':
             print("Description hash: {}".format(bytearray(tagdata).hex()))
+        elif tag == 'x':
+            print("Expiry (seconds): {}".format(from_varlist(tagdata)))
         else:
             print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
 
@@ -286,6 +312,8 @@ parser_enc.add_argument('--description',
                         help='What is being purchased')
 parser_enc.add_argument('--description-hashed',
                         help='What is being purchased (for hashing)')
+parser_enc.add_argument('--expires', type=int,
+                        help='Seconds before offer expires')
 parser_enc.add_argument('amount', type=int, help='Amount in millisatoshi')
 parser_enc.add_argument('paymenthash', help='Payment hash (in hex)')
 parser_enc.add_argument('privkey', help='Private key (in hex)')
