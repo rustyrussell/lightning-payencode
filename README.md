@@ -27,7 +27,9 @@ Currently defined tagged parts are:
    to an associated description which is too long to fit, such as may
    be contained in a web page.
 1. x: expiry time in seconds. Default is 3600 (1 hour) if not specified.
-1. f: fallback onchain-address.  20 bytes == p2pkh.  21 bytes == p2wpkh, 33 bytes == p2wsh.
+1. f: fallback onchain-address.  For bitcoin, this is 5 bits of witness version
+	  followed by a witness problem, with witness version 17 meaning p2pkh, 18
+	  means p2sh; both are followed by a 20-byte hash value.
 1. r: extra routing information.  This should be appended to the route
       to allow routing to non-public nodes; there may be more
 	  than one of these.

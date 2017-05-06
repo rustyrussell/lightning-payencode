@@ -19,10 +19,22 @@ echo "### Now send \$24 for an entire list of things (hashed)"
 ./lightning-address.py encode --description-hashed='One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon' $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
 echo
 
-# NOTE: Does not implement real fallback format yet!
-echo '### The same, with a fallback address mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP'
-./lightning-address.py encode --fallback=mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP --description-hashed='One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon' $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo '### The same, on testnet, with a fallback address mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP'
+./lightning-address.py encode --currency=tb --fallback=mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP --description-hashed='One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon' $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
 echo
 
-echo '### The same, with extra routing info to get to node 029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255'
-./lightning-address.py encode --route=029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255/0102030405060708/20/3 --fallback=mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP --description-hashed='One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon' $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo '### On mainnet, with fallback address 1RustyRX2oai4EYYDpQGWvEL62BBGqN9T with extra routing info to get to node 029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255'
+./lightning-address.py encode --route=029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255/0102030405060708/20/3 --fallback=1RustyRX2oai4EYYDpQGWvEL62BBGqN9T --description-hashed='One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon' $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo
+
+echo '### On mainnet, with fallback (p2sh) address 3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX'
+./lightning-address.py encode --fallback=3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo
+
+echo '### On mainnet, with fallback (p2wpkh) address bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'
+./lightning-address.py encode --fallback=bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4 $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+echo
+
+echo '### On mainnet, with fallback (p2wsh) address bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3'
+./lightning-address.py encode --fallback=bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3 $((24 * 100000000000 / $CONVERSION_RATE)) $RHASH $PRIVKEY
+

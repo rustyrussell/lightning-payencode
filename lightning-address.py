@@ -6,6 +6,8 @@ import sys
 import time
 # Try 'pip3 install secp256k1'
 import secp256k1
+# Try 'pip3 install base58'
+import base58
 
 # All the hard parts stolen from https://github.com/sipa/bech32/blob/master/ref/python/segwit_addr.py:
 
@@ -148,6 +150,15 @@ def varlist(val):
     b.reverse()
     return b
 
+base58_prefix_map = { 'bc' : (0, 5),
+                      'tb' : (111, 196) }
+
+def is_p2pkh(currency, prefix):
+    return prefix == base58_prefix_map[currency][0]
+
+def is_p2sh(currency, prefix):
+    return prefix == base58_prefix_map[currency][1]
+
 def from_u32list(l):
     return (l[0] << 24) + (l[1] << 16) + (l[2] << 8) + l[3]
 
@@ -157,10 +168,12 @@ def from_varlist(l):
         total = total * 256 + v
     return total
 
-def tagged(char, l):
-    bits=convertbits(l, 8, 5)
+def tagged_unconv(char, bits):
     assert len(bits) < (1 << 10)
     return [CHARSET.find(char), len(bits) >> 5, len(bits) & 31] + bits
+
+def tagged(char, l):
+    return tagged_unconv(char, convertbits(l, 8, 5))
 
 # Try to pull out tagged data: returns tag, tagged data and remainder.
 def pull_tagged(data):
@@ -170,7 +183,7 @@ def pull_tagged(data):
     if length > len(data) - 3:
         sys.exit("Truncated {} field: expected {} values"
                  .format(CHARSET[data[0]], length))
-    return (CHARSET[data[0]], convertbits(data[3:3+length], 5, 8, False), data[3+length:])
+    return (CHARSET[data[0]], data[3:3+length], data[3+length:])
 
 def lnencode(options):
     # Minimize amounts using postfix:
@@ -197,8 +210,31 @@ def lnencode(options):
         data = data + tagged('r', route)
 
     if options.fallback:
-        # FIXME: Take a real address here, and check and strip the checksum & currency.
-        data = data + tagged('f', [ord(c) for c in options.fallback])
+        
+        # Fallback parsing is per-currency, by definition.
+        if options.currency == 'bc' or options.currency == 'tb':
+            fbhrp, witness = bech32_decode(options.fallback)
+            if fbhrp:
+                if fbhrp != options.currency:
+                    sys.exit("Not a bech32 address for this currency")
+                wver = witness[0]
+                if wver > 16:
+                    sys.exit("Invalid witness version {}".format(witness[0]))
+                wprog = witness[1:]
+            else:
+                addr = base58.b58decode_check(options.fallback)
+                if is_p2pkh(options.currency, addr[0]):
+                    wver = 17
+                elif is_p2sh(options.currency, addr[0]):
+                    wver = 18
+                else:
+                    sys.exit("Unknown address type for {}"
+                             .format(options.currency))
+                wprog = addr[1:]
+            data = data + tagged_unconv('f', [wver] + convertbits(wprog, 8, 5))
+        # Other currencies here....
+        else:
+            sys.exit("FIXME: Add support for parsing this currency")
     
     if options.description:
         data = data + tagged('d', [ord(c) for c in options.description])
@@ -245,7 +281,8 @@ def lndecode(options):
     if not m:
         sys.exit("Does not contain amount")
 
-    print("Currency: {}".format(hrp[2:m.start()]))
+    currency = hrp[2:m.start()]
+    print("Currency: {}".format(currency))
     amount=int(m.group(0))
     # Postfix?
     if hrp[m.end():] == 'k':
@@ -275,6 +312,7 @@ def lndecode(options):
     while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
         if tag == 'r':
+            tagdata = convertbits(tagdata, 5, 8, False)
             if len(tagdata) != 33 + 8 + 4 + 4:
                 sys.exit('Unexpected r tag length {}'.format(len(tagdata)))
             print("Route: {}/{}/{}/{}"
@@ -283,15 +321,35 @@ def lndecode(options):
                           from_u32list(tagdata[41:45]),
                           from_u32list(tagdata[45:49])))
         elif tag == 'f':
-            # FIXME: Format address!
-            print("Fallback: {}".format(bytearray(tagdata).hex()))
+            if currency == 'bc' or currency == 'tb':
+                wver = tagdata[0]
+                wprog = convertbits(tagdata[1:], 5, 8, False)
+                if wver == 17:
+                    addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]]
+                                                      + wprog))
+                elif wver == 18:
+                    addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]]
+                                                      + wprog))
+                elif wver <= 16:
+                    addr=bech32_encode(currency, [wver] + wprog)
+                else:
+                    sys.exit('Invalid witness version {}'.format(wver))
+
+            # Other currencies here...
+            else:
+                addr=bytearray(tagdata).hex()
+            print("Fallback: {}".format(addr))
         elif tag == 'd':
+            tagdata = convertbits(tagdata, 5, 8, False)
             print("Description: {}".format(''.join(chr(c) for c in tagdata)))
         elif tag == 'h':
+            tagdata = convertbits(tagdata, 5, 8, False)
             print("Description hash: {}".format(bytearray(tagdata).hex()))
         elif tag == 'x':
+            tagdata = convertbits(tagdata, 5, 8, False)
             print("Expiry (seconds): {}".format(from_varlist(tagdata)))
         else:
+            tagdata = convertbits(tagdata, 5, 8, False)
             print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
 
 
