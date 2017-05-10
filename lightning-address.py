@@ -186,22 +186,25 @@ def pull_tagged(data):
     return (CHARSET[data[0]], data[3:3+length], data[3+length:])
 
 def lnencode(options):
-    picobtc = int(options.amount * 10**12)
-    # We can only send down to millisatoshi.
-    if picobtc % 10:
-        sys.exit("Cannot encode {}: too many decimal places"
-                 .format(options.amount))
-    if picobtc % 10**12 == 0:
-        amount = str(picobtc // 10**12)
-    elif picobtc % 10**9 == 0:
-        amount = str(picobtc // 10**9) + 'm'
-    elif picobtc % 10**6 == 0:
-        amount = str(picobtc // 10**6) + 'u'
-    elif picobtc % 10**3 == 0:
-        amount = str(picobtc // 10**3) + 'n'
+    if options.no_amount:
+        amount = ''
     else:
-        amount = str(picobtc) + 'p'
-    
+        picobtc = int(options.amount * 10**12)
+        # We can only send down to millisatoshi.
+        if picobtc % 10:
+            sys.exit("Cannot encode {}: too many decimal places"
+                     .format(options.amount))
+        if picobtc % 10**12 == 0:
+            amount = str(picobtc // 10**12)
+        elif picobtc % 10**9 == 0:
+            amount = str(picobtc // 10**9) + 'm'
+        elif picobtc % 10**6 == 0:
+            amount = str(picobtc // 10**6) + 'u'
+        elif picobtc % 10**3 == 0:
+            amount = str(picobtc // 10**3) + 'n'
+        else:
+            amount = str(picobtc) + 'p'
+
     hrp = 'ln' + options.currency + amount
     
     # version + timestamp + paymenthash
@@ -282,31 +285,31 @@ def lndecode(options):
     sig = pubkey.ecdsa_recoverable_deserialize(sigdecoded[0:64], sigdecoded[64])
     pubkey.public_key = pubkey.ecdsa_recover(bytearray([ord(c) for c in hrp] + data), sig)
     print("Signed with public key: {}".format(bytearray(pubkey.serialize()).hex()))
-    
-    m = re.search("\d+", hrp)
-    if not m:
-        sys.exit("Does not contain amount")
 
-    currency = hrp[2:m.start()]
+    m = re.search("[^\d]+", hrp[2:])
+    currency = m.group(0)
     print("Currency: {}".format(currency))
-    picobtc=int(m.group(0))
-    # Postfix?
-    if hrp[m.end():] == 'p':
-        pass
-    elif hrp[m.end():] == 'n':
-        picobtc = picobtc * 10**3
-    elif hrp[m.end():] == 'u':
-        picobtc = picobtc * 10**6
-    elif hrp[m.end():] == 'm':
-        picobtc = picobtc * 10**9
-    elif hrp[m.end():] == '':
-        picobtc = picobtc * 10**12
-    else:
-        sys.exit("Unknown amount postfix " + hrp[m.end():])
 
-    print("Amount: {}".format(picobtc / 10**12))
-    if options.rate:
-        print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
+    amountstr = hrp[2+m.end():]
+    if amountstr != '':
+        # Postfix?
+        if amountstr.endswith('p'):
+            mul = 1
+            amountstr = amountstr[:-1]
+        elif amountstr.endswith('n'):
+            mul = 10**3
+            amountstr = amountstr[:-1]
+        elif amountstr.endswith('u'):
+            mul = 10**6
+            amountstr = amountstr[:-1]
+        elif amountstr.endswith('m'):
+            mul = 10**9
+            amountstr = amountstr[:-1]
+        picobtc = int(amountstr) * mul
+        print("Amount: {}".format(picobtc / 10**12))
+
+        if options.rate:
+            print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
 
     # 4 + 32 bytes turns into 58 bytes when base32 encoded.
     if len(data) < 58:
@@ -382,6 +385,8 @@ parser_enc.add_argument('--description-hashed',
                         help='What is being purchased (for hashing)')
 parser_enc.add_argument('--expires', type=int,
                         help='Seconds before offer expires')
+parser_enc.add_argument('--no-amount', action="store_true",
+                        help="Don't encode amount")
 parser_enc.add_argument('amount', type=float, help='Amount in currency')
 parser_enc.add_argument('paymenthash', help='Payment hash (in hex)')
 parser_enc.add_argument('privkey', help='Private key (in hex)')

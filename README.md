@@ -7,7 +7,7 @@ lightning payments.
 
 Human readable part:
 1. Prefix: "ln" + BIP-bech32 currency prefix (eg. lnbc, lntb)
-1. Amount in bitcoin (m/u/n/p accepted here)
+1. (Optional) amount in bitcoin (m/u/n/p accepted here)
 
 And data part:
 1. Version: 0 (5 bits)
@@ -38,11 +38,6 @@ Currently defined tagged parts are:
    1. fee (32 bits)
    1. ctlv (32 bits)
 
-## TODO
-
-1. Don't just encode address string for fallback, but pull it apart,
-   check it, and include the RIPEMD160.
-
 ## Examples (from [examples.sh](examples.sh)):
 
 You can find a [python implementation](lightning-address.py) in this
@@ -50,8 +45,8 @@ repository, which produces these (you'll need to `pip install
 secp256k1 base58`).  You can feed them back into `lightning-address.py decode`
 too:
 
-> ### Please send 10 satoshi using rhash 0001020304050607080900010203040506070809000102030405060708090102 to me @03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad
-> lnbc100n1qtyf8desqqypqxpq9qcrsszgqqypqxpq9qcrsszgqqypqxpq9qcrsszgpqgrepkejdkke99lg8xg4freq2hyuts785u63dx2vayl63qlr2mpun5hejwnq3p9fc0twl8fueupk76hyhvjn3k76xjmmrx7vqdv06ew3cpxq70rz
+> ### Please make a donation of any amount using rhash 0001020304050607080900010203040506070809000102030405060708090102 to me @03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad
+> lnbc1qtyf84fqqqypqxpq9qcrsszgqqypqxpq9qcrsszgqqypqxpq9qcrsszgpqgj0zqeqgc3rrtqchp8uu9eg8nlk7aqk7vhfjtuflw2lgurylxyywsj4vc6ch9qfhy96nxvz3ncm5lez78mh05vzd4ze058kwfs5fp2pcqcch3ag
 > 
 > ### Please send $3 for a cup of coffee to the same peer, within 1 minute
 > lnbc2500u1qtyf8desqqypqxpq9qcrsszgqqypqxpq9qcrsszgqqypqxpq9qcrsszgpqgdq5xysxxatsyp3k7enxv4jsxqz8ss8mj6sann5lue9uufceas3xesk0gxfud3w45vc6ntjxmlelz2sy9cvxvdwwn0t0uhll47572vq70jevq43ck00cfyuvkqa0ktlfth0qqh2jwra

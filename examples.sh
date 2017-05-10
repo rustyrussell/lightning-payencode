@@ -12,8 +12,8 @@ to_btc()
     echo $1 / $CONVERSION_RATE | bc -l
 }
 
-echo "### Please send 10 satoshi using rhash $RHASH to me @$PUBKEY"
-./lightning-address.py encode 0.00000010 $RHASH $PRIVKEY
+echo "### Please make a donation of any amount using rhash $RHASH to me @$PUBKEY"
+./lightning-address.py encode --no-amount 0 $RHASH $PRIVKEY
 echo
 
 echo "### Please send \$3 for a cup of coffee to the same peer, within 1 minute"
