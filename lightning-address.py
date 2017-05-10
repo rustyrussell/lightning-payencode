@@ -186,15 +186,21 @@ def pull_tagged(data):
     return (CHARSET[data[0]], data[3:3+length], data[3+length:])
 
 def lnencode(options):
-    # Minimize amounts using postfix:
-    if options.amount % 1000000000 == 0:
-        amount = str(options.amount // 1000000000) + 'g'
-    elif options.amount % 1000000 == 0:
-        amount = str(options.amount // 1000000) + 'm'
-    elif options.amount % 1000 == 0:
-        amount = str(options.amount // 1000) + 'k'
+    picobtc = int(options.amount * 10**12)
+    # We can only send down to millisatoshi.
+    if picobtc % 10:
+        sys.exit("Cannot encode {}: too many decimal places"
+                 .format(options.amount))
+    if picobtc % 10**12 == 0:
+        amount = str(picobtc // 10**12)
+    elif picobtc % 10**9 == 0:
+        amount = str(picobtc // 10**9) + 'm'
+    elif picobtc % 10**6 == 0:
+        amount = str(picobtc // 10**6) + 'u'
+    elif picobtc % 10**3 == 0:
+        amount = str(picobtc // 10**3) + 'n'
     else:
-        amount = str(options.amount)
+        amount = str(picobtc) + 'p'
     
     hrp = 'ln' + options.currency + amount
     
@@ -283,20 +289,24 @@ def lndecode(options):
 
     currency = hrp[2:m.start()]
     print("Currency: {}".format(currency))
-    amount=int(m.group(0))
+    picobtc=int(m.group(0))
     # Postfix?
-    if hrp[m.end():] == 'k':
-        amount = amount * 1000
+    if hrp[m.end():] == 'p':
+        pass
+    elif hrp[m.end():] == 'n':
+        picobtc = picobtc * 10**3
+    elif hrp[m.end():] == 'u':
+        picobtc = picobtc * 10**6
     elif hrp[m.end():] == 'm':
-        amount = amount * 1000000
-    elif hrp[m.end():] == 'g':
-        amount = amount * 1000000000
-    elif hrp[m.end():] != '':
+        picobtc = picobtc * 10**9
+    elif hrp[m.end():] == '':
+        picobtc = picobtc * 10**12
+    else:
         sys.exit("Unknown amount postfix " + hrp[m.end():])
 
-    print("Amount: {}".format(amount))
+    print("Amount: {}".format(picobtc / 10**12))
     if options.rate:
-        print("(Conversion: {})".format(amount / 10**11 * float(options.rate)))
+        print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
 
     # 4 + 32 bytes turns into 58 bytes when base32 encoded.
     if len(data) < 58:
@@ -372,7 +382,7 @@ parser_enc.add_argument('--description-hashed',
                         help='What is being purchased (for hashing)')
 parser_enc.add_argument('--expires', type=int,
                         help='Seconds before offer expires')
-parser_enc.add_argument('amount', type=int, help='Amount in millisatoshi')
+parser_enc.add_argument('amount', type=float, help='Amount in currency')
 parser_enc.add_argument('paymenthash', help='Payment hash (in hex)')
 parser_enc.add_argument('privkey', help='Private key (in hex)')
 parser_enc.set_defaults(func=lnencode)
