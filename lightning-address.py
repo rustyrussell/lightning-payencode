@@ -206,12 +206,10 @@ def lnencode(options):
             amount = str(picobtc) + 'p'
 
     hrp = 'ln' + options.currency + amount
-    
-    # version + timestamp + paymenthash
+
+    # version, timestamp and paymenthash
     now = int(time.time())
-    assert len(u32list(now) + bytearray.fromhex(options.paymenthash)) == 4 + 32
-    data = [0] + convertbits(u32list(now) + bytearray.fromhex(options.paymenthash), 8, 5)
-    
+    data = [0] + convertbits(u32list(now), 8, 5) + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
 
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
@@ -219,7 +217,6 @@ def lnencode(options):
         data = data + tagged('r', route)
 
     if options.fallback:
-        
         # Fallback parsing is per-currency, by definition.
         if options.currency == 'bc' or options.currency == 'tb':
             fbhrp, witness = bech32_decode(options.fallback)
@@ -311,16 +308,18 @@ def lndecode(options):
         if options.rate:
             print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
 
-    # 4 + 32 bytes turns into 58 bytes when base32 encoded.
-    if len(data) < 58:
+    if len(data) < 7 + 52:
         sys.exit("Not long enough to contain timestamp and payment hash")
 
-    decoded = convertbits(data[:58], 5, 8, False)
-    data = data[58:]
-    assert len(decoded) == 4 + 32
-    tstamp = from_u32list(decoded[0:4])
+    # FIXME: This is actually 35 bits.  Thaw me out in 2106...
+    tstamp = from_u32list(convertbits(data[:7], 5, 8, False))
+    data = data[7:]
     print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
-    print("Payment hash: {}".format(bytearray(decoded[4:]).hex()))
+
+    payment_hash = convertbits(data[:52], 5, 8, False)
+    assert len(payment_hash) == 32
+    print("Payment hash: {}".format(bytearray(payment_hash).hex()))
+    data = data[52:]
 
     while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
