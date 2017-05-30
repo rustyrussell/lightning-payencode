@@ -141,12 +141,22 @@ def u32list(val):
     assert val < (1 << 32)
     return bytearray([(val >> 24) & 0xff, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
+# Encode directly as a big-endian 35-bit number (for timestamps)
+def to_u35(val):
+    assert val < (1 << 35)
+    ret = []
+    for i in range(0,7):
+        ret.append(val % 32)
+        val //= 32
+    ret.reverse()
+    return ret
+
 # Represent big-endian number with as many bytes as it takes.
 def varlist(val):
     b = bytearray()
     while val != 0:
         b.append(val & 0xFF)
-        val = val // 256
+        val //= 256
     b.reverse()
     return b
 
@@ -161,6 +171,12 @@ def is_p2sh(currency, prefix):
 
 def from_u32list(l):
     return (l[0] << 24) + (l[1] << 16) + (l[2] << 8) + l[3]
+
+def from_u35(l):
+    ret = 0
+    for i in range(0,7):
+        ret = ret * 32 + l[i]
+    return ret
 
 def from_varlist(l):
     total = 0
@@ -209,7 +225,7 @@ def lnencode(options):
 
     # version, timestamp and paymenthash
     now = int(time.time())
-    data = [0] + convertbits(u32list(now), 8, 5) + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
+    data = [0] + to_u35(now) + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
 
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
@@ -311,8 +327,7 @@ def lndecode(options):
     if len(data) < 7 + 52:
         sys.exit("Not long enough to contain timestamp and payment hash")
 
-    # FIXME: This is actually 35 bits.  Thaw me out in 2106...
-    tstamp = from_u32list(convertbits(data[:7], 5, 8, False))
+    tstamp = from_u35(data[:7])
     data = data[7:]
     print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
 
