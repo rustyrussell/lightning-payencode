@@ -252,8 +252,8 @@ def lnencode(options):
                 else:
                     sys.exit("Unknown address type for {}"
                              .format(options.currency))
-                wprog = addr[1:]
-            data = data + tagged_unconv('f', [wver] + convertbits(wprog, 8, 5))
+                wprog = convertbits(addr[1:], 8, 5)
+            data = data + tagged_unconv('f', [wver] + wprog)
         # Other currencies here....
         else:
             sys.exit("FIXME: Add support for parsing this currency")
@@ -350,15 +350,14 @@ def lndecode(options):
         elif tag == 'f':
             if currency == 'bc' or currency == 'tb':
                 wver = tagdata[0]
-                wprog = convertbits(tagdata[1:], 5, 8, False)
                 if wver == 17:
                     addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]]
-                                                      + wprog))
+                                                      + convertbits(tagdata[1:], 5, 8, False)))
                 elif wver == 18:
                     addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]]
-                                                      + wprog))
+                                                      + convertbits(tagdata[1:], 5, 8, False)))
                 elif wver <= 16:
-                    addr=bech32_encode(currency, [wver] + wprog)
+                    addr=bech32_encode(currency, tagdata)
                 else:
                     sys.exit('Invalid witness version {}'.format(wver))
 
