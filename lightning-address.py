@@ -151,14 +151,14 @@ def to_u35(val):
     ret.reverse()
     return ret
 
-# Represent big-endian number with as many bytes as it takes.
-def varlist(val):
-    b = bytearray()
+# Represent big-endian number with as many 0-31 values as it takes.
+def to_5bit(val):
+    ret = []
     while val != 0:
-        b.append(val & 0xFF)
-        val //= 256
-    b.reverse()
-    return b
+        ret.append(val % 32)
+        val //= 32
+    ret.reverse()
+    return ret
 
 base58_prefix_map = { 'bc' : (0, 5),
                       'tb' : (111, 196) }
@@ -178,10 +178,10 @@ def from_u35(l):
         ret = ret * 32 + l[i]
     return ret
 
-def from_varlist(l):
+def from_5bit(l):
     total = 0
     for v in l:
-        total = total * 256 + v
+        total = total * 32 + v
     return total
 
 def tagged_unconv(char, bits):
@@ -262,7 +262,7 @@ def lnencode(options):
         data = data + tagged('d', [ord(c) for c in options.description])
 
     if options.expires:
-        data = data + tagged('x', varlist(options.expires))
+        data = data + tagged_unconv('x', to_5bit(options.expires))
         
     if options.description_hashed:
         data = data + tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
@@ -372,8 +372,7 @@ def lndecode(options):
             tagdata = convertbits(tagdata, 5, 8, False)
             print("Description hash: {}".format(bytearray(tagdata).hex()))
         elif tag == 'x':
-            tagdata = convertbits(tagdata, 5, 8, False)
-            print("Expiry (seconds): {}".format(from_varlist(tagdata)))
+            print("Expiry (seconds): {}".format(from_5bit(tagdata)))
         else:
             tagdata = convertbits(tagdata, 5, 8, False)
             print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
