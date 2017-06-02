@@ -223,9 +223,12 @@ def lnencode(options):
 
     hrp = 'ln' + options.currency + amount
 
-    # version, timestamp and paymenthash
+    # timestamp
     now = int(time.time())
-    data = [0] + to_u35(now) + convertbits(bytearray.fromhex(options.paymenthash), 8, 5)
+    data = to_u35(now)
+
+    # Payment hash
+    data = data + tagged('p', bytearray.fromhex(options.paymenthash))
 
     for r in options.route:
         pubkey,channel,fee,cltv = r.split('/')
@@ -284,10 +287,6 @@ def lndecode(options):
     if not hrp.startswith('ln'):
         sys.exit("Does not start with ln")
 
-    if data[0] != 0:
-        sys.exit("Unknown version {}".format(data[0]))
-    data = data[1:]
-
     # Final signature takes 104 bytes (65 bytes base32 encoded)
     if len(data) < 103:
         sys.exit("Too short to contain signature")
@@ -324,17 +323,12 @@ def lndecode(options):
         if options.rate:
             print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
 
-    if len(data) < 7 + 52:
-        sys.exit("Not long enough to contain timestamp and payment hash")
+    if len(data) < 7:
+        sys.exit("Not long enough to contain timestamp")
 
     tstamp = from_u35(data[:7])
     data = data[7:]
     print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
-
-    payment_hash = convertbits(data[:52], 5, 8, False)
-    assert len(payment_hash) == 32
-    print("Payment hash: {}".format(bytearray(payment_hash).hex()))
-    data = data[52:]
 
     while len(data) > 0:
         tag,tagdata,data = pull_tagged(data)
@@ -373,6 +367,10 @@ def lndecode(options):
             print("Description hash: {}".format(bytearray(tagdata).hex()))
         elif tag == 'x':
             print("Expiry (seconds): {}".format(from_5bit(tagdata)))
+        elif tag == 'p':
+            tagdata = convertbits(tagdata, 5, 8, False)
+            assert len(tagdata) == 32
+            print("Payment hash: {}".format(bytearray(tagdata).hex()))
         else:
             tagdata = convertbits(tagdata, 5, 8, False)
             print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
