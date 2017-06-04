@@ -35,7 +35,7 @@ Currently defined tagged parts are:
    1. pubkey (264 bits)
    1. channel id (64 bits)
    1. fee (32 bits)
-   1. ctlv (32 bits)
+   1. ctlv (16 bits)
 
 ## Examples (from [examples.sh](examples.sh)):
 
