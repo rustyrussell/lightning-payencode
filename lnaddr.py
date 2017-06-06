@@ -194,6 +194,21 @@ def lnencode(options):
 
     return bech32_encode(hrp, data)
 
+class LnAddr(object):
+    def __init__(self, date=None):
+        self.date = int(time.time()) if not date else date
+        self.tags = {}
+        self.signature = None
+        self.pubkey = None
+        self.currency = None
+        self.amount = None
+
+    def __str__(self):
+        return "LnAddr[{}, tags=[{}]]".format(
+            hexlify(self.pubkey.serialize()).decode('utf-8'),
+            ", ".join([k + '=' + str(v) for k, v in self.tags.items()])
+        )
+
 def lndecode(options):
     hrp, data = bech32_decode(options.lnaddress)
     if not hrp:
@@ -208,55 +223,62 @@ def lndecode(options):
     sigdecoded = convertbits(data[-104:], 5, 8, False)
     data = data[:-104]
 
-    pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
-    sig = pubkey.ecdsa_recoverable_deserialize(sigdecoded[0:64], sigdecoded[64])
-    pubkey.public_key = pubkey.ecdsa_recover(bytearray([ord(c) for c in hrp] + data), sig)
-    print("Signed with public key: {}".format(hexlify(pubkey.serialize())))
+    addr = LnAddr()
+    addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+    addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
+        sigdecoded[0:64], sigdecoded[64])
+    addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
+        bytearray([ord(c) for c in hrp] + data), addr.signature)
 
     m = re.search("[^\d]+", hrp[2:])
-    currency = m.group(0)
-    print("Currency: {}".format(currency))
+    addr.currency = m.group(0)
 
     amountstr = hrp[2+m.end():]
     if amountstr != '':
-        amount = unshorten_amount(amountstr)
-        print("Amount: {}".format(amount))
-
-        if options.rate:
-            print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
+        addr.amount = unshorten_amount(amountstr)
 
     if len(data) < 7:
         raise ValueError("Not long enough to contain timestamp")
 
     tstamp = from_u35(data[:7])
     data = data[7:]
-    print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
+    addr.date = tstamp
 
     while len(data) > 0:
         tag, tagdata, data = pull_tagged(data)
         if tag == 'r':
             tagdata = convertbits(tagdata, 5, 8, False)
+
             if len(tagdata) != 33 + 8 + 4 + 4:
                 raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
-            print("Route: {}/{}/{}/{}"
-                  .format(bytearray(tagdata[0:33]).hex(),
-                          bytearray(tagdata[33:41]).hex(),
-                          from_u32list(tagdata[41:45]),
-                          from_u32list(tagdata[45:49])))
+
+            if 'r' not in addr.tags:
+                addr.tags['r'] = []
+
+            addr.tags['r'].append((
+                bytearray(tagdata[0:33]).hex(),
+                bytearray(tagdata[33:41]).hex(),
+                from_u32list(tagdata[41:45]),
+                from_u32list(tagdata[45:49])
+            ))
         elif tag == 'f':
-            print("Fallback: {}".format(parse_fallback(tagdata, currency)))
+            addr.tags['f'] = parse_fallback(tagdata, currency)
+
         elif tag == 'd':
-            tagdata = convertbits(tagdata, 5, 8, False)
-            print("Description: {}".format(''.join(chr(c) for c in tagdata)))
+            addr.tags['d'] = convertbits(tagdata, 5, 8, False)
+
         elif tag == 'h':
-            tagdata = convertbits(tagdata, 5, 8, False)
-            print("Description hash: {}".format(bytearray(tagdata).hex()))
+            addr.tags['h'] = hexlify(bytes(convertbits(tagdata, 5, 8, False)))
+
         elif tag == 'x':
-            print("Expiry (seconds): {}".format(from_5bit(tagdata)))
+            addr.tags['x'] = from_5bit(tagdata)
+
         elif tag == 'p':
             tagdata = convertbits(tagdata, 5, 8, False)
             assert len(tagdata) == 32
-            print("Payment hash: {}".format(bytearray(tagdata).hex()))
+            addr.tags['p'] = hexlify(bytes(tagdata))
+
         else:
-            tagdata = convertbits(tagdata, 5, 8, False)
-            print("UNKNOWN TAG {}: {}".format(tag, bytearray(tagdata).hex()))
+            addr.tags[tag] = convertbits(tagdata, 5, 8, False)
+
+    return addr
