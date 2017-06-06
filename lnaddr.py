@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 from bech32 import bech32_encode, bech32_decode, convertbits, CHARSET
+from decimal import Decimal
 
 import argparse
 import base58
@@ -8,6 +9,35 @@ import re
 import secp256k1
 import sys
 import time
+
+
+def shorten_amount(amount):
+    """ Given an amount in bitcoin, shorten it
+    """
+    # Convert to pico initially
+    amount = int(amount * 10**12)
+    units = ['p', 'n', 'u', 'm', '']
+    for unit in units:
+        if amount % 1000 == 0:
+            amount //= 1000
+        else:
+            break
+    return str(amount) + unit
+
+def unshorten_amount(amount):
+    """ Given a shortened amount, convert it into a decimal
+    """
+    units = {
+        'p': 10**12,
+        'n': 10**9,
+        'u': 10**6,
+        'm': 10**3,
+    }
+    unit = str(amount)[-1]
+    if unit in units.keys():
+        return Decimal(amount[:-1]) / units[unit]
+    else:
+        return Decimal(amount)
 
 
 # Represent as a big-endian 32-bit number.
@@ -79,21 +109,13 @@ def lnencode(options):
     if options.no_amount:
         amount = ''
     else:
-        picobtc = int(options.amount * 10**12)
+        amount = Decimal(str(options.amount))
         # We can only send down to millisatoshi.
-        if picobtc % 10:
-            sys.exit("Cannot encode {}: too many decimal places"
-                     .format(options.amount))
-        if picobtc % 10**12 == 0:
-            amount = str(picobtc // 10**12)
-        elif picobtc % 10**9 == 0:
-            amount = str(picobtc // 10**9) + 'm'
-        elif picobtc % 10**6 == 0:
-            amount = str(picobtc // 10**6) + 'u'
-        elif picobtc % 10**3 == 0:
-            amount = str(picobtc // 10**3) + 'n'
-        else:
-            amount = str(picobtc) + 'p'
+        if amount * 10**12 % 10:
+            raise ValueError("Cannot encode {}: too many decimal places".format(
+                options.amount))
+
+        amount = shorten_amount(unshorten_amount(amount))
 
     hrp = 'ln' + options.currency + amount
 
@@ -178,21 +200,8 @@ def lndecode(options):
 
     amountstr = hrp[2+m.end():]
     if amountstr != '':
-        # Postfix?
-        if amountstr.endswith('p'):
-            mul = 1
-            amountstr = amountstr[:-1]
-        elif amountstr.endswith('n'):
-            mul = 10**3
-            amountstr = amountstr[:-1]
-        elif amountstr.endswith('u'):
-            mul = 10**6
-            amountstr = amountstr[:-1]
-        elif amountstr.endswith('m'):
-            mul = 10**9
-            amountstr = amountstr[:-1]
-        picobtc = int(amountstr) * mul
-        print("Amount: {}".format(picobtc / 10**12))
+        amount = unshorten_amount(amountstr)
+        print("Amount: {}".format(amount))
 
         if options.rate:
             print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
