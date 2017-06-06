@@ -40,6 +40,49 @@ def unshorten_amount(amount):
         return Decimal(amount)
 
 
+def encode_fallback(fallback, currency):
+    """ Encode all supported fallback addresses.
+    """
+    if currency == 'bc' or currency == 'tb':
+        fbhrp, witness = bech32_decode(fallback)
+        if fbhrp:
+            if fbhrp != currency:
+                raise ValueError("Not a bech32 address for this currency")
+            wver = witness[0]
+            if wver > 16:
+                raise ValueError("Invalid witness version {}".format(witness[0]))
+            wprog = witness[1:]
+        else:
+            addr = base58.b58decode_check(fallback)
+            if is_p2pkh(currency, addr[0]):
+                wver = 17
+            elif is_p2sh(currency, addr[0]):
+                wver = 18
+            else:
+                raise ValueError("Unknown address type for {}".format(currency))
+            wprog = convertbits(addr[1:], 8, 5)
+        return tagged_unconv('f', [wver] + wprog)
+    else:
+        raise NotImplementedError("Support for currency {} not implemented".format(currency))
+
+def parse_fallback(fallback, currency):
+    if currency == 'bc' or currency == 'tb':
+        wver = fallback[0]
+        if wver == 17:
+            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]]
+                                              + convertbits(fallback[1:], 5, 8, False)))
+        elif wver == 18:
+            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]]
+                                              + convertbits(fallback[1:], 5, 8, False)))
+        elif wver <= 16:
+            addr=bech32_encode(currency, fallback)
+        else:
+            raise ValueError('Invalid witness version {}'.format(wver))
+    else:
+        addr=bytearray(tagdata).hex()
+    return addr
+
+
 # Represent as a big-endian 32-bit number.
 def u32list(val):
     assert val < (1 << 32)
@@ -131,30 +174,7 @@ def lnencode(options):
         data += tagged('r', route)
 
     if options.fallback:
-        # Fallback parsing is per-currency, by definition.
-        if options.currency == 'bc' or options.currency == 'tb':
-            fbhrp, witness = bech32_decode(options.fallback)
-            if fbhrp:
-                if fbhrp != options.currency:
-                    sys.exit("Not a bech32 address for this currency")
-                wver = witness[0]
-                if wver > 16:
-                    sys.exit("Invalid witness version {}".format(witness[0]))
-                wprog = witness[1:]
-            else:
-                addr = base58.b58decode_check(options.fallback)
-                if is_p2pkh(options.currency, addr[0]):
-                    wver = 17
-                elif is_p2sh(options.currency, addr[0]):
-                    wver = 18
-                else:
-                    sys.exit("Unknown address type for {}"
-                             .format(options.currency))
-                wprog = convertbits(addr[1:], 8, 5)
-            data += tagged_unconv('f', [wver] + wprog)
-        # Other currencies here....
-        else:
-            sys.exit("FIXME: Add support for parsing this currency")
+        data += encode_fallback(options.fallback, options.currency)
     
     if options.description:
         data += tagged('d', [ord(c) for c in options.description])
@@ -224,23 +244,7 @@ def lndecode(options):
                           from_u32list(tagdata[41:45]),
                           from_u32list(tagdata[45:49])))
         elif tag == 'f':
-            if currency == 'bc' or currency == 'tb':
-                wver = tagdata[0]
-                if wver == 17:
-                    addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]]
-                                                      + convertbits(tagdata[1:], 5, 8, False)))
-                elif wver == 18:
-                    addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]]
-                                                      + convertbits(tagdata[1:], 5, 8, False)))
-                elif wver <= 16:
-                    addr=bech32_encode(currency, tagdata)
-                else:
-                    sys.exit('Invalid witness version {}'.format(wver))
-
-            # Other currencies here...
-            else:
-                addr=bytearray(tagdata).hex()
-            print("Fallback: {}".format(addr))
+            print("Fallback: {}".format(parse_fallback(tagdata, currency)))
         elif tag == 'd':
             tagdata = convertbits(tagdata, 5, 8, False)
             print("Description: {}".format(''.join(chr(c) for c in tagdata)))
