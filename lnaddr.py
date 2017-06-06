@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 from bech32 import bech32_encode, bech32_decode, convertbits, CHARSET
+from binascii import hexlify, unhexlify
 from decimal import Decimal
 
 import base58
@@ -118,17 +119,16 @@ def lnencode(options):
 
     hrp = 'ln' + options.currency + amount
 
-    # timestamp
-    now = int(time.time())
-    data = to_u35(now)
+    # Start with the current timestamp
+    data = to_u35(int(time.time()))
 
     # Payment hash
-    data = data + tagged('p', bytearray.fromhex(options.paymenthash))
+    data += tagged('p', unhexlify(options.paymenthash))
 
     for r in options.route:
-        pubkey,channel,fee,cltv = r.split('/')
-        route = bytearray.fromhex(pubkey) + bytearray.fromhex(channel) + u32list(int(fee)) + u32list(int(cltv))
-        data = data + tagged('r', route)
+        pubkey, channel, fee, cltv = r.split('/')
+        route = unhexlify(pubkey) + unhexlify(channel) + u32list(int(fee)) + u32list(int(cltv))
+        data += tagged('r', route)
 
     if options.fallback:
         # Fallback parsing is per-currency, by definition.
@@ -151,28 +151,28 @@ def lnencode(options):
                     sys.exit("Unknown address type for {}"
                              .format(options.currency))
                 wprog = convertbits(addr[1:], 8, 5)
-            data = data + tagged_unconv('f', [wver] + wprog)
+            data += tagged_unconv('f', [wver] + wprog)
         # Other currencies here....
         else:
             sys.exit("FIXME: Add support for parsing this currency")
     
     if options.description:
-        data = data + tagged('d', [ord(c) for c in options.description])
+        data += tagged('d', [ord(c) for c in options.description])
 
     if options.expires:
-        data = data + tagged_unconv('x', to_5bit(options.expires))
+        data += tagged_unconv('x', to_5bit(options.expires))
         
     if options.description_hashed:
-        data = data + tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
+        data += tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
 
     # We actually sign the hrp, then the array of 5-bit values as bytes.
-    privkey = secp256k1.PrivateKey(bytes(bytearray.fromhex(options.privkey)))
+    privkey = secp256k1.PrivateKey(bytes(unhexlify(options.privkey)))
     sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + data))
     # This doesn't actually serialize, but returns a pair of values :(
     sig,recid = privkey.ecdsa_recoverable_serialize(sig)
-    data = data + convertbits(bytes(sig) + bytes([recid]), 8, 5)
+    data += convertbits(bytes(sig) + bytes([recid]), 8, 5)
 
-    print(bech32_encode(hrp, data))
+    return bech32_encode(hrp, data)
 
 def lndecode(options):
     hrp, data = bech32_decode(options.lnaddress)
@@ -191,7 +191,7 @@ def lndecode(options):
     pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
     sig = pubkey.ecdsa_recoverable_deserialize(sigdecoded[0:64], sigdecoded[64])
     pubkey.public_key = pubkey.ecdsa_recover(bytearray([ord(c) for c in hrp] + data), sig)
-    print("Signed with public key: {}".format(bytearray(pubkey.serialize()).hex()))
+    print("Signed with public key: {}".format(hexlify(pubkey.serialize())))
 
     m = re.search("[^\d]+", hrp[2:])
     currency = m.group(0)

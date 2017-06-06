@@ -40,4 +40,4 @@ if __name__ == "__main__":
     if not options.subparser_name:
         parser.print_help()
     else:
-        options.func(options)
+        print(options.func(options))
