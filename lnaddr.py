@@ -141,10 +141,10 @@ def tagged(char, l):
 # Try to pull out tagged data: returns tag, tagged data and remainder.
 def pull_tagged(data):
     if len(data) < 3:
-        sys.exit("Truncated field")
+        raise ValueError("Truncated field")
     length = data[1] * 32 + data[2]
     if length > len(data) - 3:
-        sys.exit("Truncated {} field: expected {} values"
+        raise ValueError("Truncated {} field: expected {} values"
                  .format(CHARSET[data[0]], length))
     return (CHARSET[data[0]], data[3:3+length], data[3+length:])
 
@@ -197,14 +197,14 @@ def lnencode(options):
 def lndecode(options):
     hrp, data = bech32_decode(options.lnaddress)
     if not hrp:
-        sys.exit("Bad bech32 checksum")
+        raise ValueError("Bad bech32 checksum")
 
     if not hrp.startswith('ln'):
-        sys.exit("Does not start with ln")
+        raise ValueError("Does not start with ln")
 
     # Final signature takes 104 bytes (65 bytes base32 encoded)
     if len(data) < 103:
-        sys.exit("Too short to contain signature")
+        raise ValueError("Too short to contain signature")
     sigdecoded = convertbits(data[-104:], 5, 8, False)
     data = data[:-104]
 
@@ -226,18 +226,18 @@ def lndecode(options):
             print("(Conversion: {})".format(picobtc / 10**12 * float(options.rate)))
 
     if len(data) < 7:
-        sys.exit("Not long enough to contain timestamp")
+        raise ValueError("Not long enough to contain timestamp")
 
     tstamp = from_u35(data[:7])
     data = data[7:]
     print("Timestamp: {} ({})".format(tstamp, time.ctime(tstamp)))
 
     while len(data) > 0:
-        tag,tagdata,data = pull_tagged(data)
+        tag, tagdata, data = pull_tagged(data)
         if tag == 'r':
             tagdata = convertbits(tagdata, 5, 8, False)
             if len(tagdata) != 33 + 8 + 4 + 4:
-                sys.exit('Unexpected r tag length {}'.format(len(tagdata)))
+                raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
             print("Route: {}/{}/{}/{}"
                   .format(bytearray(tagdata[0:33]).hex(),
                           bytearray(tagdata[33:41]).hex(),
