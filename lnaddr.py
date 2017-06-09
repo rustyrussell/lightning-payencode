@@ -107,8 +107,11 @@ def to_5bit(val):
     ret.reverse()
     return ret
 
-base58_prefix_map = { 'bc' : (0, 5),
-                      'tb' : (111, 196) }
+# Map of classical and witness address prefixes
+base58_prefix_map = {
+    'bc' : (0, 5),
+    'tb' : (111, 196)
+}
 
 def is_p2pkh(currency, prefix):
     return prefix == base58_prefix_map[currency][0]
@@ -148,48 +151,45 @@ def pull_tagged(data):
                  .format(CHARSET[data[0]], length))
     return (CHARSET[data[0]], data[3:3+length], data[3+length:])
 
-def lnencode(options):
-    if options.no_amount:
-        amount = ''
-    else:
-        amount = Decimal(str(options.amount))
+def lnencode(addr, privkey):
+    if addr.amount:
+        amount = Decimal(str(addr.amount))
         # We can only send down to millisatoshi.
         if amount * 10**12 % 10:
             raise ValueError("Cannot encode {}: too many decimal places".format(
-                options.amount))
+                addr.amount))
 
         amount = shorten_amount(unshorten_amount(amount))
+    else:
+        amount = ''
 
-    hrp = 'ln' + options.currency + amount
+    hrp = 'ln' + addr.currency + amount
 
     # Start with the current timestamp
     data = to_u35(int(time.time()))
 
     # Payment hash
-    data += tagged('p', unhexlify(options.paymenthash))
+    data += tagged('p', addr.paymenthash)
 
-    for r in options.route:
-        pubkey, channel, fee, cltv = r.split('/')
-        route = unhexlify(pubkey) + unhexlify(channel) + u32list(int(fee)) + u32list(int(cltv))
-        data += tagged('r', route)
-
-    if options.fallback:
-        data += encode_fallback(options.fallback, options.currency)
-    
-    if options.description:
-        data += tagged('d', [ord(c) for c in options.description])
-
-    if options.expires:
-        data += tagged_unconv('x', to_5bit(options.expires))
-        
-    if options.description_hashed:
-        data += tagged('h', hashlib.sha256(options.description_hashed.encode('utf-8')).digest())
+    for k, v in addr.tags:
+        if k == 'r':
+            pubkey, channel, fee, cltv = v
+            route = pubkey + channel + u32list(fee) + u32list(cltv)
+            data += tagged('r', route)
+        elif k == 'f':
+            data += encode_fallback(v, addr.currency)
+        elif k == 'd':
+            data += tagged('d', [ord(c) for c in v])
+        elif k == 'x':
+            data += tagged_unconv('x', to_5bit(v))
+        elif k == 'h':
+            data += tagged('h', hashlib.sha256(v.encode('utf-8')).digest())
 
     # We actually sign the hrp, then the array of 5-bit values as bytes.
-    privkey = secp256k1.PrivateKey(bytes(unhexlify(options.privkey)))
+    privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
     sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + data))
     # This doesn't actually serialize, but returns a pair of values :(
-    sig,recid = privkey.ecdsa_recoverable_serialize(sig)
+    sig, recid = privkey.ecdsa_recoverable_serialize(sig)
     data += convertbits(bytes(sig) + bytes([recid]), 8, 5)
 
     return bech32_encode(hrp, data)
@@ -197,20 +197,21 @@ def lnencode(options):
 class LnAddr(object):
     def __init__(self, date=None):
         self.date = int(time.time()) if not date else date
-        self.tags = {}
+        self.tags = []
         self.signature = None
         self.pubkey = None
         self.currency = None
         self.amount = None
 
     def __str__(self):
-        return "LnAddr[{}, tags=[{}]]".format(
+        return "LnAddr[{}, amount={}{} tags=[{}]]".format(
             hexlify(self.pubkey.serialize()).decode('utf-8'),
-            ", ".join([k + '=' + str(v) for k, v in self.tags.items()])
+            self.amount, self.currency,
+            ", ".join([k + '=' + str(v) for k, v in self.tags])
         )
 
-def lndecode(options):
-    hrp, data = bech32_decode(options.lnaddress)
+def lndecode(a):
+    hrp, data = bech32_decode(a)
     if not hrp:
         raise ValueError("Bad bech32 checksum")
 
@@ -252,33 +253,29 @@ def lndecode(options):
             if len(tagdata) != 33 + 8 + 4 + 4:
                 raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
 
-            if 'r' not in addr.tags:
-                addr.tags['r'] = []
-
-            addr.tags['r'].append((
+            addr.tags.append(('r',(
                 bytearray(tagdata[0:33]).hex(),
                 bytearray(tagdata[33:41]).hex(),
                 from_u32list(tagdata[41:45]),
                 from_u32list(tagdata[45:49])
-            ))
+            )))
         elif tag == 'f':
-            addr.tags['f'] = parse_fallback(tagdata, currency)
+            addr.tags.append(('f', parse_fallback(tagdata, addr.currency)))
 
         elif tag == 'd':
-            addr.tags['d'] = convertbits(tagdata, 5, 8, False)
+            addr.tags.append(('d', convertbits(tagdata, 5, 8, False)))
 
         elif tag == 'h':
-            addr.tags['h'] = hexlify(bytes(convertbits(tagdata, 5, 8, False)))
+            addr.tags.append(('h', bytes(convertbits(tagdata, 5, 8, False))))
 
         elif tag == 'x':
-            addr.tags['x'] = from_5bit(tagdata)
+            addr.tags.append(('x', from_5bit(tagdata)))
 
         elif tag == 'p':
             tagdata = convertbits(tagdata, 5, 8, False)
             assert len(tagdata) == 32
-            addr.tags['p'] = hexlify(bytes(tagdata))
+            addr.paymenthash = bytes(tagdata)
 
         else:
             addr.tags[tag] = convertbits(tagdata, 5, 8, False)
-
     return addr
