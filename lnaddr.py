@@ -83,10 +83,23 @@ def parse_fallback(fallback, currency):
     return addr
 
 
-# Represent as a big-endian 32-bit number.
-def u32list(val):
-    assert val < (1 << 32)
-    return bytearray([(val >> 24) & 0xff, (val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
+# Represent as a big-endian n-byte number.
+def val2byterray(val, numbytes):
+    assert val < (1 << (8 * numbytes))
+    ret = bytearray()
+    for i in range(0,numbytes):
+        ret.append(val & 0xff)
+        val //= 256
+    ret.reverse()
+    return ret
+
+# Reverse representation
+def bytearray2val(arr):
+    val = 0
+    for i in arr:
+        val *= 256
+        val += i
+    return val
 
 # Encode directly as a big-endian 35-bit number (for timestamps)
 def to_u35(val):
@@ -118,9 +131,6 @@ def is_p2pkh(currency, prefix):
 
 def is_p2sh(currency, prefix):
     return prefix == base58_prefix_map[currency][1]
-
-def from_u32list(l):
-    return (l[0] << 24) + (l[1] << 16) + (l[2] << 8) + l[3]
 
 def from_u35(l):
     ret = 0
@@ -174,7 +184,7 @@ def lnencode(addr, privkey):
     for k, v in addr.tags:
         if k == 'r':
             pubkey, channel, fee, cltv = v
-            route = unhexlify(pubkey) + unhexlify(channel) + u32list(fee) + u32list(cltv)
+            route = unhexlify(pubkey) + unhexlify(channel) + val2byterray(fee, 8) + val2byterray(cltv, 2)
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
@@ -251,14 +261,14 @@ def lndecode(a):
         if tag == 'r':
             tagdata = convertbits(tagdata, 5, 8, False)
 
-            if len(tagdata) != 33 + 8 + 4 + 4:
+            if len(tagdata) != 33 + 8 + 4 + 2:
                 raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
 
             addr.tags.append(('r',(
                 bytearray(tagdata[0:33]).hex(),
                 bytearray(tagdata[33:41]).hex(),
-                from_u32list(tagdata[41:45]),
-                from_u32list(tagdata[45:49])
+                bytearray2val(tagdata[41:49]),
+                bytearray2val(tagdata[49:51])
             )))
         elif tag == 'f':
             addr.tags.append(('f', parse_fallback(tagdata, addr.currency)))
