@@ -195,13 +195,14 @@ def lnencode(addr, privkey):
     return bech32_encode(hrp, data)
 
 class LnAddr(object):
-    def __init__(self, date=None):
-        self.date = int(time.time()) if not date else date
-        self.tags = []
+    def __init__(self, paymenthash=None, amount=None, currency=None, tags=None, date=None):
+        self.date = int(time.time()) if not date else int(date)
+        self.tags = [] if not tags else tags
+        self.paymenthash=paymenthash
         self.signature = None
         self.pubkey = None
-        self.currency = None
-        self.amount = None
+        self.currency = currency
+        self.amount = amount
 
     def __str__(self):
         return "LnAddr[{}, amount={}{} tags=[{}]]".format(
