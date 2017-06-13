@@ -14,6 +14,8 @@ def encode(options):
     addr.fallback = options.fallback if options.fallback else None
     if options.amount:
         addr.amount = options.amount
+    if options.timestamp:
+        addr.date = int(options.timestamp)
 
     addr.paymenthash = unhexlify(options.paymenthash)
 
@@ -92,6 +94,8 @@ parser_enc.add_argument('--description-hashed',
                         help='What is being purchased (for hashing)')
 parser_enc.add_argument('--expires', type=int,
                         help='Seconds before offer expires')
+parser_enc.add_argument('--timestamp', type=int,
+                        help='Timestamp (seconds after epoch) instead of now')
 parser_enc.add_argument('--no-amount', action="store_true",
                         help="Don't encode amount")
 parser_enc.add_argument('amount', type=float, help='Amount in currency')

@@ -175,8 +175,8 @@ def lnencode(addr, privkey):
 
     hrp = 'ln' + amount
 
-    # Start with the current timestamp
-    data = to_u35(int(time.time()))
+    # Start with the timestamp
+    data = to_u35(addr.date)
 
     # Payment hash
     data += tagged('p', addr.paymenthash)
