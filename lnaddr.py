@@ -161,7 +161,7 @@ def lnencode(addr, privkey):
 
         amount = addr.currency + shorten_amount(unshorten_amount(amount))
     else:
-        amount = ''
+        amount = addr.currency if addr.currency else ''
 
     hrp = 'ln' + amount
 
@@ -174,7 +174,7 @@ def lnencode(addr, privkey):
     for k, v in addr.tags:
         if k == 'r':
             pubkey, channel, fee, cltv = v
-            route = pubkey + channel + u32list(fee) + u32list(cltv)
+            route = unhexlify(pubkey) + unhexlify(channel) + u32list(fee) + u32list(cltv)
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
