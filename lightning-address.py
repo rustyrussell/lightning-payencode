@@ -1,9 +1,9 @@
 #! /usr/bin/env python3
-from lnaddr import lnencode, lndecode, LnAddr
 from binascii import hexlify, unhexlify
-
+from lnaddr import lnencode, lndecode, LnAddr
 
 import argparse
+import time
 
 
 def encode(options):
@@ -36,11 +36,42 @@ def encode(options):
             int(splits[2]),
             int(splits[3])
         )))
-    return lnencode(addr, options.privkey)
+    print(lnencode(addr, options.privkey))
 
 
 def decode(options):
-    return lndecode(options.lnaddress)
+    a = lndecode(options.lnaddress)
+    def tags_by_name(name, tags):
+        return [t[1] for t in tags if t[0] == name]
+
+    print("Signed with public key:", hexlify(a.pubkey.serialize()))
+    print("Currency:", a.currency)
+    print("Payment hash:", hexlify(a.paymenthash))
+    if a.amount:
+        print("Amount:", a.amount)
+    print("Timestamp: {} ({})".format(a.date, time.ctime(a.date)))
+
+    for r in tags_by_name('r', a.tags):
+        print("Route: {}/{}/{}/{}".format(r[0], r[1], r[2], r[3]))
+
+    fallback = tags_by_name('f', a.tags)
+    if fallback:
+        print("Fallback:", fallback[0])
+
+    description = tags_by_name('d', a.tags)
+    if description:
+        print("Description:", description[0])
+
+    dhash = tags_by_name('h', a.tags)
+    if dhash:
+        print("Description hash:", hexlify(dhash[0]))
+
+    expiry = tags_by_name('x', a.tags)
+    if expiry:
+        print("Expiry (seconds):", expiry[0])
+
+    for t in [t for t in a.tags if t[0] not in 'rdfhx']:
+        print("UNKNOWN TAG {}: {}".format(t[0], hexlify(t[1])))
 
 parser = argparse.ArgumentParser(description='Encode lightning address')
 subparsers = parser.add_subparsers(dest='subparser_name',
@@ -78,4 +109,4 @@ if __name__ == "__main__":
     if not options.subparser_name:
         parser.print_help()
     else:
-        print(options.func(options))
+        options.func(options)

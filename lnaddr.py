@@ -159,11 +159,11 @@ def lnencode(addr, privkey):
             raise ValueError("Cannot encode {}: too many decimal places".format(
                 addr.amount))
 
-        amount = shorten_amount(unshorten_amount(amount))
+        amount = addr.currency + shorten_amount(unshorten_amount(amount))
     else:
         amount = ''
 
-    hrp = 'ln' + addr.currency + amount
+    hrp = 'ln' + amount
 
     # Start with the current timestamp
     data = to_u35(int(time.time()))
@@ -195,7 +195,7 @@ def lnencode(addr, privkey):
     return bech32_encode(hrp, data)
 
 class LnAddr(object):
-    def __init__(self, paymenthash=None, amount=None, currency=None, tags=None, date=None):
+    def __init__(self, paymenthash=None, amount=None, currency='bc', tags=None, date=None):
         self.date = int(time.time()) if not date else int(date)
         self.tags = [] if not tags else tags
         self.paymenthash=paymenthash
@@ -233,11 +233,11 @@ def lndecode(a):
         bytearray([ord(c) for c in hrp] + data), addr.signature)
 
     m = re.search("[^\d]+", hrp[2:])
-    addr.currency = m.group(0)
-
-    amountstr = hrp[2+m.end():]
-    if amountstr != '':
-        addr.amount = unshorten_amount(amountstr)
+    if m:
+        addr.currency = m.group(0)
+        amountstr = hrp[2+m.end():]
+        if amountstr != '':
+            addr.amount = unshorten_amount(amountstr)
 
     if len(data) < 7:
         raise ValueError("Not long enough to contain timestamp")
@@ -264,7 +264,7 @@ def lndecode(a):
             addr.tags.append(('f', parse_fallback(tagdata, addr.currency)))
 
         elif tag == 'd':
-            addr.tags.append(('d', convertbits(tagdata, 5, 8, False)))
+            addr.tags.append(('d', bytes(convertbits(tagdata, 5, 8, False)).decode('utf-8')))
 
         elif tag == 'h':
             addr.tags.append(('h', bytes(convertbits(tagdata, 5, 8, False))))
