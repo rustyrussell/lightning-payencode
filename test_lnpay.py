@@ -44,7 +44,7 @@ def compare(a, b):
     # Unset these, they are generated during encoding/decoding
     b.pubkey = None
     b.signature = None
-    
+
     assert a.__dict__ == b.__dict__    
 
 def test_roundtrip():
