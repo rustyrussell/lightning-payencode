@@ -261,7 +261,7 @@ def lndecode(a):
         if tag == 'r':
             tagdata = convertbits(tagdata, 5, 8, False)
 
-            if len(tagdata) != 33 + 8 + 4 + 2:
+            if len(tagdata) != 33 + 8 + 8 + 2:
                 raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
 
             addr.tags.append(('r',(
