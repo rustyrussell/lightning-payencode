@@ -1,10 +1,13 @@
 #! /usr/bin/env python3
-from bech32 import bech32_encode, bech32_decode, convertbits, CHARSET
+from bech32 import bech32_encode, bech32_decode, CHARSET
 from binascii import hexlify, unhexlify
+from bitstring import BitArray
 from decimal import Decimal
 
 import base58
+import bitstring
 import hashlib
+import math
 import re
 import secp256k1
 import sys
@@ -39,6 +42,20 @@ def unshorten_amount(amount):
     else:
         return Decimal(amount)
 
+# Bech32 spits out array of 5-bit values.  Shim here.
+def u5_to_bitarray(arr):
+    ret = bitstring.BitArray()
+    for a in arr:
+        ret += bitstring.pack("uint:5", a)
+    return ret
+
+def bitarray_to_u5(barr):
+    assert barr.len % 5 == 0
+    ret = []
+    s = bitstring.ConstBitStream(barr)
+    while s.pos != s.len:
+        ret.append(s.read(5).uint)
+    return ret
 
 def encode_fallback(fallback, currency):
     """ Encode all supported fallback addresses.
@@ -51,7 +68,7 @@ def encode_fallback(fallback, currency):
             wver = witness[0]
             if wver > 16:
                 raise ValueError("Invalid witness version {}".format(witness[0]))
-            wprog = witness[1:]
+            wprog = u5_to_bitarray(witness[1:])
         else:
             addr = base58.b58decode_check(fallback)
             if is_p2pkh(currency, addr[0]):
@@ -60,65 +77,28 @@ def encode_fallback(fallback, currency):
                 wver = 18
             else:
                 raise ValueError("Unknown address type for {}".format(currency))
-            wprog = convertbits(addr[1:], 8, 5)
-        return tagged_unconv('f', [wver] + wprog)
+            wprog = addr[1:]
+        return tagged('f', bitstring.pack("uint:5", wver) + wprog)
     else:
         raise NotImplementedError("Support for currency {} not implemented".format(currency))
 
 def parse_fallback(fallback, currency):
     if currency == 'bc' or currency == 'tb':
-        wver = fallback[0]
+        wver = fallback[0:5].uint
         if wver == 17:
-            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]]
-                                              + convertbits(fallback[1:], 5, 8, False)))
+            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]])
+                                        + fallback[5:].tobytes())
         elif wver == 18:
-            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]]
-                                              + convertbits(fallback[1:], 5, 8, False)))
+            addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]])
+                                        + fallback[5:].tobytes())
         elif wver <= 16:
-            addr=bech32_encode(currency, fallback)
+            addr=bech32_encode(currency, bitarray_to_u5(fallback))
         else:
             raise ValueError('Invalid witness version {}'.format(wver))
     else:
-        addr=bytearray(tagdata).hex()
+        addr=fallback.tobytes()
     return addr
 
-
-# Represent as a big-endian n-byte number.
-def val2byterray(val, numbytes):
-    assert val < (1 << (8 * numbytes))
-    ret = bytearray()
-    for i in range(0,numbytes):
-        ret.append(val & 0xff)
-        val //= 256
-    ret.reverse()
-    return ret
-
-# Reverse representation
-def bytearray2val(arr):
-    val = 0
-    for i in arr:
-        val *= 256
-        val += i
-    return val
-
-# Encode directly as a big-endian 35-bit number (for timestamps)
-def to_u35(val):
-    assert val < (1 << 35)
-    ret = []
-    for i in range(0,7):
-        ret.append(val % 32)
-        val //= 32
-    ret.reverse()
-    return ret
-
-# Represent big-endian number with as many 0-31 values as it takes.
-def to_5bit(val):
-    ret = []
-    while val != 0:
-        ret.append(val % 32)
-        val //= 32
-    ret.reverse()
-    return ret
 
 # Map of classical and witness address prefixes
 base58_prefix_map = {
@@ -132,34 +112,32 @@ def is_p2pkh(currency, prefix):
 def is_p2sh(currency, prefix):
     return prefix == base58_prefix_map[currency][1]
 
-def from_u35(l):
-    ret = 0
-    for i in range(0,7):
-        ret = ret * 32 + l[i]
-    return ret
-
-def from_5bit(l):
-    total = 0
-    for v in l:
-        total = total * 32 + v
-    return total
-
-def tagged_unconv(char, bits):
-    assert len(bits) < (1 << 10)
-    return [CHARSET.find(char), len(bits) >> 5, len(bits) & 31] + bits
-
+# Tagged field containing BitArray
 def tagged(char, l):
-    return tagged_unconv(char, convertbits(l, 8, 5))
+    # Tagged fields need to be zero-padded to 5 bits.
+    while l.len % 5 != 0:
+        l.append('0b0')
+    return bitstring.pack("uint:5, uint:5, uint:5",
+                          CHARSET.find(char),
+                          (l.len / 5) / 32, (l.len / 5) % 32) + l
+
+# Tagged field containing bytes
+def tagged_bytes(char, l):
+    return tagged(char, bitstring.BitArray(l))
+
+# Discard trailing bits, convert to bytes.
+def trim_to_bytes(barr):
+    # Adds a byte if necessary.
+    b = barr.tobytes()
+    if barr.len % 8 != 0:
+        return b[:-1]
+    return b
 
 # Try to pull out tagged data: returns tag, tagged data and remainder.
-def pull_tagged(data):
-    if len(data) < 3:
-        raise ValueError("Truncated field")
-    length = data[1] * 32 + data[2]
-    if length > len(data) - 3:
-        raise ValueError("Truncated {} field: expected {} values"
-                 .format(CHARSET[data[0]], length))
-    return (CHARSET[data[0]], data[3:3+length], data[3+length:])
+def pull_tagged(stream):
+    tag = stream.read(5).uint
+    length = stream.read(5).uint * 32 + stream.read(5).uint
+    return (CHARSET[tag], stream.read(length * 5), stream)
 
 def lnencode(addr, privkey):
     if addr.amount:
@@ -176,33 +154,37 @@ def lnencode(addr, privkey):
     hrp = 'ln' + amount
 
     # Start with the timestamp
-    data = to_u35(addr.date)
+    data = bitstring.pack('uint:35', addr.date)
 
     # Payment hash
-    data += tagged('p', addr.paymenthash)
+    data += tagged_bytes('p', addr.paymenthash)
 
     for k, v in addr.tags:
         if k == 'r':
             pubkey, channel, fee, cltv = v
-            route = pubkey + channel + val2byterray(fee, 8) + val2byterray(cltv, 2)
+            route = bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:64', fee) + bitstring.pack('intbe:16', cltv)
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
         elif k == 'd':
-            data += tagged('d', [ord(c) for c in v])
+            data += tagged_bytes('d', v.encode())
         elif k == 'x':
-            data += tagged_unconv('x', to_5bit(v))
+            # Get minimal length by trimming leading 5 bits at a time.
+            expirybits = bitstring.pack('intbe:64', v)[4:64]
+            while expirybits.startswith('0b00000'):
+                expirybits = expirybits[5:]
+            data += tagged('x', expirybits)
         elif k == 'h':
-            data += tagged('h', hashlib.sha256(v.encode('utf-8')).digest())
+            data += tagged_bytes('h', hashlib.sha256(v.encode('utf-8')).digest())
 
     # We actually sign the hrp, then the array of 5-bit values as bytes.
     privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
-    sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + data))
+    sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + bitarray_to_u5(data)))
     # This doesn't actually serialize, but returns a pair of values :(
     sig, recid = privkey.ecdsa_recoverable_serialize(sig)
-    data += convertbits(bytes(sig) + bytes([recid]), 8, 5)
+    data += bytes(sig) + bytes([recid])
 
-    return bech32_encode(hrp, data)
+    return bech32_encode(hrp, bitarray_to_u5(data))
 
 class LnAddr(object):
     def __init__(self, paymenthash=None, amount=None, currency='bc', tags=None, date=None):
@@ -229,18 +211,20 @@ def lndecode(a):
     if not hrp.startswith('ln'):
         raise ValueError("Does not start with ln")
 
-    # Final signature takes 104 bytes (65 bytes base32 encoded)
-    if len(data) < 103:
+    data = u5_to_bitarray(data);
+
+    # Final signature 65 bytes, split it off.
+    if len(data) < 65*8:
         raise ValueError("Too short to contain signature")
-    sigdecoded = convertbits(data[-104:], 5, 8, False)
-    data = data[:-104]
+    sigdecoded = data[-65*8:].tobytes()
+    data = bitstring.ConstBitStream(data[:-65*8])
 
     addr = LnAddr()
     addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
     addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
         sigdecoded[0:64], sigdecoded[64])
     addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
-        bytearray([ord(c) for c in hrp] + data), addr.signature)
+        bytearray([ord(c) for c in hrp] + bitarray_to_u5(data)), addr.signature)
 
     m = re.search("[^\d]+", hrp[2:])
     if m:
@@ -249,44 +233,40 @@ def lndecode(a):
         if amountstr != '':
             addr.amount = unshorten_amount(amountstr)
 
-    if len(data) < 7:
-        raise ValueError("Not long enough to contain timestamp")
+    addr.date = data.read(35).uint
 
-    tstamp = from_u35(data[:7])
-    data = data[7:]
-    addr.date = tstamp
-
-    while len(data) > 0:
+    while data.pos != data.len:
         tag, tagdata, data = pull_tagged(data)
         if tag == 'r':
-            tagdata = convertbits(tagdata, 5, 8, False)
-
-            if len(tagdata) != 33 + 8 + 8 + 2:
-                raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
+            tagbytes = trim_to_bytes(tagdata)
+            # FIXME: Ignore if incorrect length!
+            if len(tagbytes) != 33 + 8 + 8 + 2:
+                raise ValueError('Unexpected r tag length {}'.format(len(tagbytes)))
 
             addr.tags.append(('r',(
-                bytearray(tagdata[0:33]),
-                bytearray(tagdata[33:41]),
-                bytearray2val(tagdata[41:49]),
-                bytearray2val(tagdata[49:51])
+                tagbytes[0:33],
+                tagbytes[33:41],
+                tagdata[41*8:49*8].intbe,
+                tagdata[49*8:51*8].intbe
             )))
         elif tag == 'f':
             addr.tags.append(('f', parse_fallback(tagdata, addr.currency)))
 
         elif tag == 'd':
-            addr.tags.append(('d', bytes(convertbits(tagdata, 5, 8, False)).decode('utf-8')))
+            addr.tags.append(('d', trim_to_bytes(tagdata).decode('utf-8')))
 
         elif tag == 'h':
-            addr.tags.append(('h', bytes(convertbits(tagdata, 5, 8, False))))
+            # FIXME: Ignore if incorrect length!
+            addr.tags.append(('h', trim_to_bytes(tagdata)))
 
         elif tag == 'x':
-            addr.tags.append(('x', from_5bit(tagdata)))
+            addr.tags.append(('x', tagdata.uint))
 
         elif tag == 'p':
-            tagdata = convertbits(tagdata, 5, 8, False)
-            assert len(tagdata) == 32
-            addr.paymenthash = bytes(tagdata)
+            # FIXME: Ignore if incorrect length!
+            assert len(trim_to_bytes(tagdata)) == 32
+            addr.paymenthash = trim_to_bytes(tagdata)
 
         else:
-            addr.tags[tag] = convertbits(tagdata, 5, 8, False)
+            addr.tags[tag] = tagdata
     return addr
