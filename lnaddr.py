@@ -177,9 +177,9 @@ def lnencode(addr, privkey):
         elif k == 'h':
             data += tagged_bytes('h', hashlib.sha256(v.encode('utf-8')).digest())
 
-    # We actually sign the hrp, then the array of 5-bit values as bytes.
+    # We actually sign the hrp, then data (padded to 8 bits with zeroes).
     privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
-    sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp] + bitarray_to_u5(data)))
+    sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp]) + data.tobytes())
     # This doesn't actually serialize, but returns a pair of values :(
     sig, recid = privkey.ecdsa_recoverable_serialize(sig)
     data += bytes(sig) + bytes([recid])
@@ -224,7 +224,7 @@ def lndecode(a):
     addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
         sigdecoded[0:64], sigdecoded[64])
     addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
-        bytearray([ord(c) for c in hrp] + bitarray_to_u5(data)), addr.signature)
+        bytearray([ord(c) for c in hrp]) + data.tobytes(), addr.signature)
 
     m = re.search("[^\d]+", hrp[2:])
     if m:
