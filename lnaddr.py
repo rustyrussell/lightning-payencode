@@ -184,7 +184,7 @@ def lnencode(addr, privkey):
     for k, v in addr.tags:
         if k == 'r':
             pubkey, channel, fee, cltv = v
-            route = unhexlify(pubkey) + unhexlify(channel) + val2byterray(fee, 8) + val2byterray(cltv, 2)
+            route = pubkey + channel + val2byterray(fee, 8) + val2byterray(cltv, 2)
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
@@ -265,8 +265,8 @@ def lndecode(a):
                 raise ValueError('Unexpected r tag length {}'.format(len(tagdata)))
 
             addr.tags.append(('r',(
-                bytearray(tagdata[0:33]).hex(),
-                bytearray(tagdata[33:41]).hex(),
+                bytearray(tagdata[0:33]),
+                bytearray(tagdata[33:41]),
                 bytearray2val(tagdata[41:49]),
                 bytearray2val(tagdata[49:51])
             )))
