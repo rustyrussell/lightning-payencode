@@ -193,6 +193,8 @@ def lnencode(addr, privkey):
             data += tagged('x', expirybits)
         elif k == 'h':
             data += tagged_bytes('h', hashlib.sha256(v.encode('utf-8')).digest())
+        elif k == 'n':
+            data += tagged_bytes('n', v)
 
     # We actually sign the hrp, then data (padded to 8 bits with zeroes).
     privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
@@ -240,11 +242,7 @@ def lndecode(a):
     data = bitstring.ConstBitStream(data[:-65*8])
 
     addr = LnAddr()
-    addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
-    addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
-        sigdecoded[0:64], sigdecoded[64])
-    addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
-        bytearray([ord(c) for c in hrp]) + data.tobytes(), addr.signature)
+    addr.pubkey = None
 
     m = re.search("[^\d]+", hrp[2:])
     if m:
@@ -291,7 +289,31 @@ def lndecode(a):
             # FIXME: Ignore if incorrect length!
             assert len(trim_to_bytes(tagdata)) == 32
             addr.paymenthash = trim_to_bytes(tagdata)
-
+        elif tag == 'n':
+            # FIXME: Ignore if incorrect length!
+            assert len(trim_to_bytes(tagdata)) == 33
+            addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+            addr.pubkey.deserialize(trim_to_bytes(tagdata))
         else:
             addr.tags[tag] = tagdata
+
+    # BOLT #11:
+    #
+    # A reader MUST check that the `signature` is valid (see the `n` tagged
+    # field specified below).
+    if addr.pubkey: # Specified by `n`
+        # BOLT #11:
+        #
+        # A reader MUST use the `n` field to validate the signature instead of
+        # performing signature recovery if a valid `n` field is provided.
+        addr.signature = addr.pubkey.ecdsa_deserialize_compact(sigdecoded[0:64])
+        if not addr.pubkey.ecdsa_verify(bytearray([ord(c) for c in hrp]) + data.tobytes(), addr.signature):
+            raise ValueError('Invalid signature')
+    else: # Recover pubkey from signature.
+        addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+        addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
+            sigdecoded[0:64], sigdecoded[64])
+        addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
+            bytearray([ord(c) for c in hrp]) + data.tobytes(), addr.signature)
+
     return addr

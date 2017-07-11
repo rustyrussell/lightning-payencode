@@ -1,10 +1,10 @@
 #! /usr/bin/python3
 
 from hashlib import sha256
-from lnaddr import shorten_amount, unshorten_amount, LnAddr, lnencode, lndecode
+from lnaddr import shorten_amount, unshorten_amount, LnAddr, lnencode, lndecode, u5_to_bitarray, bitarray_to_u5
 from decimal import Decimal
 from binascii import unhexlify, hexlify
-
+from bech32 import bech32_encode, bech32_decode
 
 RHASH=unhexlify('0001020304050607080900010203040506070809000102030405060708090102')
 CONVERSION_RATE=1200
@@ -35,9 +35,9 @@ def compare(a, b):
 
     # Need to filter out these, since they are being modified during
     # encoding, i.e., hashed
-    a.tags = [t for t in a.tags if t[0] != 'h']
-    b.tags = [t for t in b.tags if t[0] != 'h']
-    
+    a.tags = [t for t in a.tags if t[0] != 'h' and t[0] != 'n']
+    b.tags = [t for t in b.tags if t[0] != 'h' and t[0] != 'n']
+   
     assert hexlify(b.pubkey.serialize(compressed=True)) == PUBKEY
     assert b.signature != None
 
@@ -65,6 +65,7 @@ def test_roundtrip():
         LnAddr(RHASH, amount=24, tags=[('f', '3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX')]),
         LnAddr(RHASH, amount=24, tags=[('f', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4')]),
         LnAddr(RHASH, amount=24, tags=[('f', 'bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3')]),
+        LnAddr(RHASH, amount=24, tags=[('n', unhexlify(PUBKEY))]),
     ]
 
     # Roundtrip
@@ -72,6 +73,25 @@ def test_roundtrip():
         o = lndecode(lnencode(t, PRIVKEY))
         compare(t, o)
 
+def test_n_decoding():
+    # We flip the signature recovery bit, which would normally give a different
+    # pubkey.
+    hrp, data = bech32_decode(lnencode(LnAddr(RHASH, amount=24), PRIVKEY))
+    databits = u5_to_bitarray(data)
+    databits.invert(-1)
+    lnaddr = lndecode(bech32_encode(hrp, bitarray_to_u5(databits)))
+    assert hexlify(lnaddr.pubkey.serialize(compressed=True)) != PUBKEY
+
+    # But not if we supply expliciy `n` specifier!
+    hrp, data = bech32_decode(lnencode(LnAddr(RHASH, amount=24,
+                                              tags=[('n', unhexlify(PUBKEY))]),
+                                       PRIVKEY))
+    databits = u5_to_bitarray(data)
+    databits.invert(-1)
+    lnaddr = lndecode(bech32_encode(hrp, bitarray_to_u5(databits)))
+    assert hexlify(lnaddr.pubkey.serialize(compressed=True)) == PUBKEY
+
 if __name__ == '__main__':
     test_shorten_amount()
     test_roundtrip()
+    test_n_decoding()
