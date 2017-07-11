@@ -14,6 +14,10 @@ import sys
 import time
 
 
+# BOLT #11:
+#
+# A writer MUST encode `amount` as a positive decimal integer with no
+# leading zeroes, SHOULD use the shortest representation possible.
 def shorten_amount(amount):
     """ Given an amount in bitcoin, shorten it
     """
@@ -30,6 +34,13 @@ def shorten_amount(amount):
 def unshorten_amount(amount):
     """ Given a shortened amount, convert it into a decimal
     """
+    # BOLT #11:
+    # The following `multiplier` letters are defined:
+    #
+    #* `m` (milli): multiply by 0.001
+    #* `u` (micro): multiply by 0.000001
+    #* `n` (nano): multiply by 0.000000001
+    #* `p` (pico): multiply by 0.000000000001
     units = {
         'p': 10**12,
         'n': 10**9,
@@ -37,6 +48,12 @@ def unshorten_amount(amount):
         'm': 10**3,
     }
     unit = str(amount)[-1]
+    # BOLT #11:
+    # A reader SHOULD fail if `amount` contains a non-digit, or is followed by
+    # anything except a `multiplier` in the table above.
+    if not re.fullmatch("\d+[pnum]?", str(amount)):
+        raise ValueError("Invalid amount '{}'".format(amount))
+
     if unit in units.keys():
         return Decimal(amount[:-1]) / units[unit]
     else:
@@ -147,7 +164,7 @@ def lnencode(addr, privkey):
             raise ValueError("Cannot encode {}: too many decimal places".format(
                 addr.amount))
 
-        amount = addr.currency + shorten_amount(unshorten_amount(amount))
+        amount = addr.currency + shorten_amount(amount)
     else:
         amount = addr.currency if addr.currency else ''
 
@@ -208,6 +225,9 @@ def lndecode(a):
     if not hrp:
         raise ValueError("Bad bech32 checksum")
 
+    # BOLT #11:
+    #
+    # A reader MUST fail if it does not understand the `prefix`.
     if not hrp.startswith('ln'):
         raise ValueError("Does not start with ln")
 
@@ -230,6 +250,11 @@ def lndecode(a):
     if m:
         addr.currency = m.group(0)
         amountstr = hrp[2+m.end():]
+        # BOLT #11:
+        #
+        # A reader SHOULD indicate if amount is unspecified, otherwise it MUST
+        # multiply `amount` by the `multiplier` value (if any) to derive the
+        # amount required for payment.
         if amountstr != '':
             addr.amount = unshorten_amount(amountstr)
 
