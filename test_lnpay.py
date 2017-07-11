@@ -55,17 +55,17 @@ def test_roundtrip():
     
     
     tests = [
-        LnAddr(RHASH),
+        LnAddr(RHASH, tags=[('d', '')]),
         LnAddr(RHASH, amount=Decimal('0.001'),
                tags=[('d', '1 cup coffee'), ('x', 60)]),
         LnAddr(RHASH, amount=Decimal('1'), tags=[('h', longdescription)]),
         LnAddr(RHASH, currency='tb', tags=[('f', 'mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP'), ('h', longdescription)]),
         LnAddr(RHASH, amount=24, tags=[
             ('r', (unhexlify('029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255'), unhexlify('0102030405060708'), 20, 3)), ('f', '1RustyRX2oai4EYYDpQGWvEL62BBGqN9T'), ('h', longdescription)]),
-        LnAddr(RHASH, amount=24, tags=[('f', '3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX')]),
-        LnAddr(RHASH, amount=24, tags=[('f', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4')]),
-        LnAddr(RHASH, amount=24, tags=[('f', 'bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3')]),
-        LnAddr(RHASH, amount=24, tags=[('n', unhexlify(PUBKEY))]),
+        LnAddr(RHASH, amount=24, tags=[('f', '3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX'), ('h', longdescription)]),
+        LnAddr(RHASH, amount=24, tags=[('f', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'), ('h', longdescription)]),
+        LnAddr(RHASH, amount=24, tags=[('f', 'bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3'), ('h', longdescription)]),
+        LnAddr(RHASH, amount=24, tags=[('n', unhexlify(PUBKEY)), ('h', longdescription)]),
     ]
 
     # Roundtrip
@@ -76,7 +76,7 @@ def test_roundtrip():
 def test_n_decoding():
     # We flip the signature recovery bit, which would normally give a different
     # pubkey.
-    hrp, data = bech32_decode(lnencode(LnAddr(RHASH, amount=24), PRIVKEY))
+    hrp, data = bech32_decode(lnencode(LnAddr(RHASH, amount=24, tags=[('d', '')]), PRIVKEY))
     databits = u5_to_bitarray(data)
     databits.invert(-1)
     lnaddr = lndecode(bech32_encode(hrp, bitarray_to_u5(databits)))
@@ -84,7 +84,8 @@ def test_n_decoding():
 
     # But not if we supply expliciy `n` specifier!
     hrp, data = bech32_decode(lnencode(LnAddr(RHASH, amount=24,
-                                              tags=[('n', unhexlify(PUBKEY))]),
+                                              tags=[('d', ''),
+                                                    ('n', unhexlify(PUBKEY))]),
                                        PRIVKEY))
     databits = u5_to_bitarray(data)
     databits.invert(-1)
