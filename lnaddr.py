@@ -111,7 +111,7 @@ def parse_fallback(fallback, currency):
         elif wver <= 16:
             addr=bech32_encode(currency, bitarray_to_u5(fallback))
         else:
-            raise ValueError('Invalid witness version {}'.format(wver))
+            return None
     else:
         addr=fallback.tobytes()
     return addr
@@ -195,6 +195,9 @@ def lnencode(addr, privkey):
             data += tagged_bytes('h', hashlib.sha256(v.encode('utf-8')).digest())
         elif k == 'n':
             data += tagged_bytes('n', v)
+        else:
+            # FIXME: Support unknown tags?
+            raise ValueError("Unknown tag {}".format(k))
 
     # We actually sign the hrp, then data (padded to 8 bits with zeroes).
     privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
@@ -209,6 +212,7 @@ class LnAddr(object):
     def __init__(self, paymenthash=None, amount=None, currency='bc', tags=None, date=None):
         self.date = int(time.time()) if not date else int(date)
         self.tags = [] if not tags else tags
+        self.unknown_tags = []
         self.paymenthash=paymenthash
         self.signature = None
         self.pubkey = None
@@ -260,11 +264,20 @@ def lndecode(a):
 
     while data.pos != data.len:
         tag, tagdata, data = pull_tagged(data)
+
+        # BOLT #11:
+        #
+        # A reader MUST skip over unknown fields, an `f` field with unknown
+        # `version`, or a `p`, `h`, `n` or `r` field which does not have
+        # `data_length` 52, 52, 53 or 82 respectively.
+        data_length = len(tagdata) / 5
+        
         if tag == 'r':
+            if data_length != 82:
+                addr.unknown_tags.append((tag, tagdata))
+                continue
+
             tagbytes = trim_to_bytes(tagdata)
-            # FIXME: Ignore if incorrect length!
-            if len(tagbytes) != 33 + 8 + 8 + 2:
-                raise ValueError('Unexpected r tag length {}'.format(len(tagbytes)))
 
             addr.tags.append(('r',(
                 tagbytes[0:33],
@@ -273,29 +286,40 @@ def lndecode(a):
                 tagdata[49*8:51*8].intbe
             )))
         elif tag == 'f':
-            addr.tags.append(('f', parse_fallback(tagdata, addr.currency)))
+            fallback = parse_fallback(tagdata, addr.currency)
+            if fallback:
+                addr.tags.append(('f', fallback))
+            else:
+                # Incorrect version.
+                addr.unknown_tags.append((tag, tagdata))
+                continue
 
         elif tag == 'd':
             addr.tags.append(('d', trim_to_bytes(tagdata).decode('utf-8')))
 
         elif tag == 'h':
-            # FIXME: Ignore if incorrect length!
+            if data_length != 52:
+                addr.unknown_tags.append((tag, tagdata))
+                continue
             addr.tags.append(('h', trim_to_bytes(tagdata)))
 
         elif tag == 'x':
             addr.tags.append(('x', tagdata.uint))
 
         elif tag == 'p':
-            # FIXME: Ignore if incorrect length!
-            assert len(trim_to_bytes(tagdata)) == 32
+            if data_length != 52:
+                addr.unknown_tags.append((tag, tagdata))
+                continue
             addr.paymenthash = trim_to_bytes(tagdata)
+
         elif tag == 'n':
-            # FIXME: Ignore if incorrect length!
-            assert len(trim_to_bytes(tagdata)) == 33
+            if data_length != 53:
+                addr.unknown_tags.append((tag, tagdata))
+                continue
             addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
             addr.pubkey.deserialize(trim_to_bytes(tagdata))
         else:
-            addr.tags[tag] = tagdata
+            addr.unknown_tags.append((tag, tagdata))
 
     # BOLT #11:
     #
