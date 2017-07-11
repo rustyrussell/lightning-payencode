@@ -175,8 +175,17 @@ def lnencode(addr, privkey):
 
     # Payment hash
     data += tagged_bytes('p', addr.paymenthash)
+    tags_set = set()
 
     for k, v in addr.tags:
+
+        # BOLT #11:
+        #
+        # A writer MUST NOT include more than one `d`, `h`, `n` or `x` fields,
+        if k in ('d', 'h', 'n', 'x'):
+            if k in tags_set:
+                raise ValueError("Duplicate '{}' tag".format(k))
+
         if k == 'r':
             pubkey, channel, fee, cltv = v
             route = bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:64', fee) + bitstring.pack('intbe:16', cltv)
@@ -199,6 +208,17 @@ def lnencode(addr, privkey):
             # FIXME: Support unknown tags?
             raise ValueError("Unknown tag {}".format(k))
 
+        tags_set.add(k)
+
+    # BOLT #11:
+    #
+    # A writer MUST include either a `d` or `h` field, and MUST NOT include
+    # both.
+    if 'd' in tags_set and 'h' in tags_set:
+        raise ValueError("Cannot include both 'd' and 'h'")
+    if not 'd' in tags_set and not 'h' in tags_set:
+        raise ValueError("Must include either 'd' or 'h'")
+    
     # We actually sign the hrp, then data (padded to 8 bits with zeroes).
     privkey = secp256k1.PrivateKey(bytes(unhexlify(privkey)))
     sig = privkey.ecdsa_sign_recoverable(bytearray([ord(c) for c in hrp]) + data.tobytes())
