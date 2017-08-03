@@ -187,8 +187,10 @@ def lnencode(addr, privkey):
                 raise ValueError("Duplicate '{}' tag".format(k))
 
         if k == 'r':
-            pubkey, channel, fee, cltv = v
-            route = bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:64', fee) + bitstring.pack('intbe:16', cltv)
+            route = bitstring.BitArray()
+            for step in v:
+                pubkey, channel, fee, cltv = step
+                route.append(bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:64', fee) + bitstring.pack('intbe:16', cltv))
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
@@ -288,23 +290,28 @@ def lndecode(a):
         # BOLT #11:
         #
         # A reader MUST skip over unknown fields, an `f` field with unknown
-        # `version`, or a `p`, `h`, `n` or `r` field which does not have
-        # `data_length` 52, 52, 53 or 82 respectively.
+        # `version`, or a `p`, `h`, or `n` field which does not have
+        # `data_length` 52, 52, or 53 respectively.
         data_length = len(tagdata) / 5
         
         if tag == 'r':
-            if data_length != 82:
-                addr.unknown_tags.append((tag, tagdata))
-                continue
-
-            tagbytes = trim_to_bytes(tagdata)
-
-            addr.tags.append(('r',(
-                tagbytes[0:33],
-                tagbytes[33:41],
-                tagdata[41*8:49*8].intbe,
-                tagdata[49*8:51*8].intbe
-            )))
+            # BOLT #11:
+            #
+            # * `r` (3): `data_length` variable.  One or more entries
+            # containing extra routing information for a private route;
+            # there may be more than one `r` field, too.
+            #    * `pubkey` (264 bits)
+            #    * `short_channel_id` (64 bits)
+            #    * `fee` (64 bits, big-endian)
+            #    * `cltv_expiry_delta` (16 bits, big-endian)
+            route=[]
+            s = bitstring.ConstBitStream(tagdata)
+            while s.pos + 264 + 64 + 64 + 16 < s.len:
+                route.append((s.read(264).tobytes(),
+                              s.read(64).tobytes(),
+                              s.read(64).intbe,
+                              s.read(16).intbe))
+            addr.tags.append(('r',route))                
         elif tag == 'f':
             fallback = parse_fallback(tagdata, addr.currency)
             if fallback:
