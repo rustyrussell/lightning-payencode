@@ -189,8 +189,8 @@ def lnencode(addr, privkey):
         if k == 'r':
             route = bitstring.BitArray()
             for step in v:
-                pubkey, channel, fee, cltv = step
-                route.append(bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:64', fee) + bitstring.pack('intbe:16', cltv))
+                pubkey, channel, feebase, feerate, cltv = step
+                route.append(bitstring.BitArray(pubkey) + bitstring.BitArray(channel) + bitstring.pack('intbe:32', feebase) + bitstring.pack('intbe:32', feerate) + bitstring.pack('intbe:16', cltv))
             data += tagged('r', route)
         elif k == 'f':
             data += encode_fallback(v, addr.currency)
@@ -302,14 +302,16 @@ def lndecode(a):
             # there may be more than one `r` field, too.
             #    * `pubkey` (264 bits)
             #    * `short_channel_id` (64 bits)
-            #    * `fee` (64 bits, big-endian)
+            #    * `feebase` (32 bits, big-endian)
+            #    * `feerate` (32 bits, big-endian)
             #    * `cltv_expiry_delta` (16 bits, big-endian)
             route=[]
             s = bitstring.ConstBitStream(tagdata)
-            while s.pos + 264 + 64 + 64 + 16 < s.len:
+            while s.pos + 264 + 64 + 32 + 32 + 16 < s.len:
                 route.append((s.read(264).tobytes(),
                               s.read(64).tobytes(),
-                              s.read(64).intbe,
+                              s.read(32).intbe,
+                              s.read(32).intbe,
                               s.read(16).intbe))
             addr.tags.append(('r',route))                
         elif tag == 'f':
