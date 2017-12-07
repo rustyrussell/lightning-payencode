@@ -32,12 +32,13 @@ def encode(options):
     for r in options.route:
         splits = r.split('/')
         route=[]
-        while len(splits) >= 4:
+        while len(splits) >= 5:
             route.append((unhexlify(splits[0]),
                           unhexlify(splits[1]),
                           int(splits[2]),
-                          int(splits[3])))
-            splits = splits[4:]
+                          int(splits[3]),
+                          int(splits[4])))
+            splits = splits[5:]
         assert(len(splits) == 0)
         addr.tags.append(('r', route))
     print(lnencode(addr, options.privkey))
@@ -58,7 +59,7 @@ def decode(options):
     for r in tags_by_name('r', a.tags):
         print("Route: ",end='')
         for step in r:
-            print("{}/{}/{}/{} ".format(step[0], step[1], step[2], step[3]), end='')
+            print("{}/{}/{}/{}/{} ".format(step[0], step[1], step[2], step[3], step[4]), end='')
         print('')
 
     fallback = tags_by_name('f', a.tags)
@@ -90,7 +91,7 @@ parser_dec = subparsers.add_parser('decode', help='decode help')
 parser_enc.add_argument('--currency', default='bc',
                     help="What currency")
 parser_enc.add_argument('--route', action='append', default=[],
-                        help="Extra route steps of form pubkey/channel/fee/cltv+")
+                        help="Extra route steps of form pubkey/channel/feebase/feerate/cltv+")
 parser_enc.add_argument('--fallback',
                         help='Fallback address for onchain payment')
 parser_enc.add_argument('--description',
