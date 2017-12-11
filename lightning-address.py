@@ -59,7 +59,7 @@ def decode(options):
     for r in tags_by_name('r', a.tags):
         print("Route: ",end='')
         for step in r:
-            print("{}/{}/{}/{}/{} ".format(step[0], step[1], step[2], step[3], step[4]), end='')
+            print("{}/{}/{}/{}/{} ".format(hexlify(step[0]), hexlify(step[1]), step[2], step[3], step[4]), end='')
         print('')
 
     fallback = tags_by_name('f', a.tags)
