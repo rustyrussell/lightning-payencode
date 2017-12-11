@@ -248,7 +248,7 @@ class LnAddr(object):
             ", ".join([k + '=' + str(v) for k, v in self.tags])
         )
 
-def lndecode(a):
+def lndecode(a, verbose=False):
     hrp, data = bech32_decode(a)
     if not hrp:
         raise ValueError("Bad bech32 checksum")
@@ -349,6 +349,15 @@ def lndecode(a):
             addr.pubkey.deserialize(trim_to_bytes(tagdata))
         else:
             addr.unknown_tags.append((tag, tagdata))
+
+    if verbose:
+        print('hex of signature data (32 byte r, 32 byte s): {}'
+              .format(hexlify(sigdecoded[0:64])))
+        print('recovery flag: {}'.format(sigdecoded[64]))
+        print('hex of data for signing: {}'
+              .format(hexlify(bytearray([ord(c) for c in hrp])
+                              + data.tobytes())))
+        print('SHA256 of above: {}'.format(hashlib.sha256(bytearray([ord(c) for c in hrp]) + data.tobytes()).hexdigest()))
 
     # BOLT #11:
     #
