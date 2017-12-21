@@ -20,8 +20,8 @@ echo "### Please make a donation of any amount using rhash $RHASH to me @$PUBKEY
 ./lightning-address.py encode $TIMESTAMP --no-amount 0 --description='Please consider supporting this project' $RHASH $PRIVKEY
 echo
 
-echo "### Please send \$3 for a cup of coffee to the same peer, within 1 minute"
-./lightning-address.py encode $TIMESTAMP --description='1 cup coffee' $(to_btc 3) --expires=60 $RHASH $PRIVKEY
+echo "### Please send \$3 for a cup of nonsense (ナンセンス 1杯) to the same peer, within 1 minute"
+./lightning-address.py encode $TIMESTAMP --description='ナンセンス 1杯' $(to_btc 3) --expires=60 $RHASH $PRIVKEY
 echo
 
 echo "### Now send \$24 for an entire list of things (hashed)"
