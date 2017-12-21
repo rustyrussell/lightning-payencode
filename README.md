@@ -1,41 +1,7 @@
-# Lightning Payments Draft
+# Lightning Payments Example Implementation
 
-This (very draft!) proposal builds on
-[bech32 encoding](https://github.com/sipa/bech32/blob/master/bip-witaddr.mediawiki),
-while providing a minimal QR-code-ready format for requesting
+This is an implementation of [Lightning BOLT11 Specification](https://github.com/lightningnetwork/lightning-rfc/blob/master/11-payment-encoding.md) for providing a minimal QR-code-ready format for requesting
 lightning payments.
-
-Human readable part:
-1. Prefix: "ln" + BIP-bech32 currency prefix (eg. lnbc, lntb)
-1. (Optional) amount in bitcoin (m/u/n/p accepted here)
-
-And data part:
-1. UTC timestamp in seconds-since-Unix-epoch (35 bits)
-1. Zero or more tagged parts.
-1. Signature (bitcoin-style, of SHA256(SHA256(), plus recovery byte) of above. (520 bits)
-
-Tagged parts are of format:
-1. type (5 bits)
-1. length (10 bits)
-1. data (length x 5 bits)
-
-Currently defined tagged parts are:
-1. p: Payment hash (256 bits)
-1. d: short description of purpose of payment (ASCII).  eg. '1 cup of coffee'
-1. h: description of purpose of payment (SHA256).  This is used to commit
-   to an associated description which is too long to fit, such as may
-   be contained in a web page.
-1. x: expiry time in seconds. Default is 3600 (1 hour) if not specified.
-1. f: fallback onchain-address.  For bitcoin, this is 5 bits of witness version
-	  followed by a witness problem, with witness version 17 meaning p2pkh, 18
-	  means p2sh; both are followed by a 20-byte hash value.
-1. r: extra routing information.  This should be appended to the route
-      to allow routing to non-public nodes; there may be more
-	  than one of these.
-   1. pubkey (264 bits)
-   1. channel id (64 bits)
-   1. fee (64 bits)
-   1. ctlv (16 bits)
 
 ## Examples (from [examples.sh](examples.sh)):
 
