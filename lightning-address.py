@@ -110,7 +110,7 @@ parser_enc.add_argument('privkey', help='Private key (in hex)')
 parser_enc.set_defaults(func=encode)
 
 parser_dec.add_argument('lnaddress', help='Address to decode')
-parser_dec.add_argument('--rate', type=float, help='Convfersion amount for 1 currency unit')
+parser_dec.add_argument('--rate', type=float, help='Conversion amount for 1 currency unit')
 parser_dec.add_argument('--pubkey', help='Public key for the chanid')
 parser_dec.add_argument('--verbose', help='Print out extra decoding info', action="store_true")
 parser_dec.set_defaults(func=decode)
