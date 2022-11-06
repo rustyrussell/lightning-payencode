@@ -104,10 +104,10 @@ def parse_fallback(fallback, currency):
         wver = fallback[0:5].uint
         if wver == 17:
             addr=base58.b58encode_check(bytes([base58_prefix_map[currency][0]])
-                                        + fallback[5:].tobytes())
+                                        + fallback[5:].tobytes()).decode('ascii')
         elif wver == 18:
             addr=base58.b58encode_check(bytes([base58_prefix_map[currency][1]])
-                                        + fallback[5:].tobytes())
+                                        + fallback[5:].tobytes()).decode('ascii')
         elif wver <= 16:
             addr=bech32_encode(currency, bitarray_to_u5(fallback))
         else:
@@ -345,7 +345,7 @@ def lndecode(a, verbose=False):
             if data_length != 53:
                 addr.unknown_tags.append((tag, tagdata))
                 continue
-            addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+            addr.pubkey = secp256k1.PublicKey()
             addr.pubkey.deserialize(trim_to_bytes(tagdata))
         else:
             addr.unknown_tags.append((tag, tagdata))
@@ -372,7 +372,7 @@ def lndecode(a, verbose=False):
         if not addr.pubkey.ecdsa_verify(bytearray([ord(c) for c in hrp]) + data.tobytes(), addr.signature):
             raise ValueError('Invalid signature')
     else: # Recover pubkey from signature.
-        addr.pubkey = secp256k1.PublicKey(flags=secp256k1.ALL_FLAGS)
+        addr.pubkey = secp256k1.PublicKey()
         addr.signature = addr.pubkey.ecdsa_recoverable_deserialize(
             sigdecoded[0:64], sigdecoded[64])
         addr.pubkey.public_key = addr.pubkey.ecdsa_recover(
