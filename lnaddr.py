@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 from bech32 import bech32_encode, bech32_decode, CHARSET
 from binascii import hexlify, unhexlify
 from bitstring import BitArray
