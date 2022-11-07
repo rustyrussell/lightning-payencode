@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 from binascii import hexlify, unhexlify
 from lnaddr import lnencode, lndecode, LnAddr
 
